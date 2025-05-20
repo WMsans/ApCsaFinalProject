@@ -1,0 +1,122 @@
+import World.Chunk.*; // Import Chunk for setting dimensions
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+import org.joml.Vector3f;
+
+public class Config {
+    private Properties properties;
+
+    // Movement Parameters
+    public float maxSpeed;
+    public float acceleration;
+    public float groundDeceleration;
+    public float airDeceleration;
+    public float jumpUpSpeed;
+    public float maxFallSpeed;
+    public float fallAcceleration;
+    public float jumpEndEarlyGravityModifier;
+    public float coyoteTime;
+    public float jumpBufferTime;
+
+    // Lighting Parameters
+    public float gamma;
+    public Vector3f lightPosition;
+
+    // World/Chunk Parameters
+    public int chunkSizeX;
+    public int chunkSizeY;
+    public int chunkSizeZ;
+    public int renderDistanceInChunks;
+
+    public Config(String fileName) {
+        properties = new Properties();
+        try (InputStream input = Config.class.getClassLoader().getResourceAsStream(fileName)) {
+            if (input == null) {
+                System.err.println("Sorry, unable to find " + fileName + ". Using default values.");
+                setDefaultProperties();
+            } else {
+                properties.load(input);
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            System.err.println("IOException loading " + fileName + ". Using default values.");
+            setDefaultProperties();
+        }
+        loadProperties();
+
+        // Initialize static chunk dimensions after loading config
+        Chunk.setChunkDimensions(chunkSizeX, chunkSizeY, chunkSizeZ);
+    }
+
+    private void setDefaultProperties() {
+        // Lighting defaults
+        properties.setProperty("gamma", "0.2");
+        properties.setProperty("lightPositionX", "100.0");
+        properties.setProperty("lightPositionY", "100.0");
+        properties.setProperty("lightPositionZ", "100.0");
+
+        // Movement defaults
+        properties.setProperty("player.maxSpeed", "5.0");
+        properties.setProperty("player.acceleration", "30.0");
+        properties.setProperty("player.groundDeceleration", "20.0");
+        properties.setProperty("player.airDeceleration", "5.0");
+        properties.setProperty("player.jumpUpSpeed", "7.0");
+        properties.setProperty("player.maxFallSpeed", "50.0");
+        properties.setProperty("player.fallAcceleration", "19.62");
+        properties.setProperty("player.jumpEndEarlyGravityModifier", "2.5");
+        properties.setProperty("player.coyoteTime", "0.1");
+        properties.setProperty("player.jumpBufferTime", "0.1");
+
+        // World/Chunk defaults
+        properties.setProperty("world.chunkSizeX", "16");
+        properties.setProperty("world.chunkSizeY", "16");
+        properties.setProperty("world.chunkSizeZ", "16");
+        properties.setProperty("world.renderDistanceInChunks", "8");
+    }
+
+    private void loadProperties() {
+        // Lighting
+        this.gamma = Float.parseFloat(properties.getProperty("gamma"));
+        float lightX = Float.parseFloat(properties.getProperty("lightPositionX"));
+        float lightY = Float.parseFloat(properties.getProperty("lightPositionY"));
+        float lightZ = Float.parseFloat(properties.getProperty("lightPositionZ"));
+        this.lightPosition = new Vector3f(lightX, lightY, lightZ);
+
+        // Movement
+        this.maxSpeed = Float.parseFloat(properties.getProperty("player.maxSpeed"));
+        this.acceleration = Float.parseFloat(properties.getProperty("player.acceleration"));
+        this.groundDeceleration = Float.parseFloat(properties.getProperty("player.groundDeceleration"));
+        this.airDeceleration = Float.parseFloat(properties.getProperty("player.airDeceleration"));
+        this.jumpUpSpeed = Float.parseFloat(properties.getProperty("player.jumpUpSpeed"));
+        this.maxFallSpeed = Float.parseFloat(properties.getProperty("player.maxFallSpeed"));
+        this.fallAcceleration = Float.parseFloat(properties.getProperty("player.fallAcceleration"));
+        this.jumpEndEarlyGravityModifier = Float.parseFloat(properties.getProperty("player.jumpEndEarlyGravityModifier"));
+        this.coyoteTime = Float.parseFloat(properties.getProperty("player.coyoteTime"));
+        this.jumpBufferTime = Float.parseFloat(properties.getProperty("player.jumpBufferTime"));
+
+        // World/Chunk
+        this.chunkSizeX = Integer.parseInt(properties.getProperty("world.chunkSizeX"));
+        this.chunkSizeY = Integer.parseInt(properties.getProperty("world.chunkSizeY"));
+        this.chunkSizeZ = Integer.parseInt(properties.getProperty("world.chunkSizeZ"));
+        this.renderDistanceInChunks = Integer.parseInt(properties.getProperty("world.renderDistanceInChunks"));
+    }
+
+    // Getters (optional, direct access is also fine for these public fields)
+    public float getGamma() { return gamma; }
+    public Vector3f getLightPosition() { return lightPosition; }
+    public float getMaxSpeed() { return maxSpeed; }
+    public float getAcceleration() { return acceleration; }
+    public float getGroundDeceleration() { return groundDeceleration; }
+    public float getAirDeceleration() { return airDeceleration; }
+    public float getJumpUpSpeed() { return jumpUpSpeed; }
+    public float getMaxFallSpeed() { return maxFallSpeed; }
+    public float getFallAcceleration() { return fallAcceleration; }
+    public float getJumpEndEarlyGravityModifier() { return jumpEndEarlyGravityModifier; }
+    public float getCoyoteTime() { return coyoteTime; }
+    public float getJumpBufferTime() { return jumpBufferTime; }
+    public int getChunkSizeX() { return chunkSizeX; }
+    public int getChunkSizeY() { return chunkSizeY; }
+    public int getChunkSizeZ() { return chunkSizeZ; }
+    public int getRenderDistanceInChunks() { return renderDistanceInChunks; }
+}

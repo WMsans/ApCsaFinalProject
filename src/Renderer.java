@@ -1,3 +1,4 @@
+import Input.Config;
 import World.Block;
 import World.Terrain;
 import org.joml.Matrix4f;
@@ -98,7 +99,6 @@ public class Renderer {
         shader.createUniform("lightPos");
         shader.createUniform("lightColor");
         shader.createUniform("gamma");
-        shader.createUniform("viewPos");
     }
 
     private void initCubeMesh() {

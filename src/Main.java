@@ -1,5 +1,6 @@
 import World.Terrain;
 import Input.*;
+import Configuration.*;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
@@ -17,9 +18,9 @@ public class Main implements Runnable {
     private Terrain terrain;
     private Input input;
     private PlayerEntity playerEntity;
-    private Config config; // Added config
+    private Config config;
 
-    private final String windowTitle = "LWJGL Minecraft Prototype - Lighting";
+    private final String windowTitle = "LWJGL Minecraft Prototype - Chunk System";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
 
@@ -45,8 +46,7 @@ public class Main implements Runnable {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        // Load configuration
-        config = new Config("config.properties"); // Load from classpath
+        config = new Config("config.properties");
 
         window = new Window(windowTitle, initialWidth, initialHeight);
         window.create();
@@ -57,17 +57,20 @@ public class Main implements Runnable {
         glfwShowWindow(window.getWindowHandle());
         GL.createCapabilities();
 
-        glClearColor(0.1f, 0.1f, 0.15f, 0.0f); // Darker sky for better light perception
+        glClearColor(0.1f, 0.1f, 0.15f, 0.0f);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = new Terrain(20, 3, 20);
+        // Initialize terrain with desired initial block dimensions and config
+        // The terrain generator will now use chunk sizes from config.
+        // For example, 64x16x64 blocks total for initial generation.
+        terrain = new Terrain(64, config.getChunkSizeY() * 2, 64, config);
 
-        Vector3f playerStartPosition = new Vector3f(0, 5.0f, 0);
-        playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition);
 
-        // Pass config to Renderer
+        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 5.0f, 0); // Start above generated terrain
+        playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
+
         renderer = new Renderer(playerEntity.getCamera(), config);
     }
 
@@ -78,8 +81,10 @@ public class Main implements Runnable {
         while (!window.shouldClose()) {
             float currentTime = (float) glfwGetTime();
             deltaTime = currentTime - lastTime;
-            if (deltaTime > 0.1f) deltaTime = 0.1f;
             lastTime = currentTime;
+
+            if (deltaTime > 0.1f) deltaTime = 0.1f;
+            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f;
 
             input.pollEvents();
 
@@ -90,9 +95,10 @@ public class Main implements Runnable {
             playerEntity.update(deltaTime);
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderer.renderTerrain(terrain);
+            // Pass player position to renderer for determining which chunks to render
+            renderer.renderTerrain(terrain, playerEntity.getPosition());
             window.swapBuffers();
-            glfwPollEvents(); // Moved to end of loop for consistency with input polling logic
+            glfwPollEvents();
         }
     }
 
