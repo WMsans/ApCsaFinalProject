@@ -61,7 +61,7 @@ public class Main implements Runnable {
         terrain = new Terrain(20, 3, 20); // Slightly larger terrain
 
         // Create the player entity
-        Vector3f playerStartPosition = new Vector3f(0, 5.0f, 10); // Start a bit higher to see gravity
+        Vector3f playerStartPosition = new Vector3f(0, 5.0f, 0); // Start a bit higher to see gravity
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition);
 
         renderer = new Renderer(playerEntity.getCamera()); // Renderer gets camera from PlayerEntity

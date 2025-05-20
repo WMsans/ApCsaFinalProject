@@ -8,7 +8,6 @@ import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.util.UUID;
 
-
 public abstract class Entity {
     protected final UUID id;
     protected Vector3f position;
@@ -24,6 +23,7 @@ public abstract class Entity {
 
     protected static final float GRAVITY_ACCELERATION = -19.62f;
     protected static final float TERMINAL_VELOCITY = -50.0f;
+    protected static final float COLLISION_SKIN_WIDTH = 0.005f; // Small offset to prevent sticking
 
     public Entity(Terrain worldTerrain, Vector3f initialPosition, Vector3f dimensions) {
         this.id = UUID.randomUUID();
@@ -34,7 +34,6 @@ public abstract class Entity {
         this.isOnGround = false;
         this.yaw = 0;
         this.pitch = 0;
-        // Create local bounding box (centered at origin, will be translated by entity's position)
         this.localBoundingBox = new CustomAABB(
                 -dimensions.x / 2, -dimensions.y / 2, -dimensions.z / 2,
                 dimensions.x / 2,  dimensions.y / 2,  dimensions.z / 2
@@ -45,7 +44,7 @@ public abstract class Entity {
         if (!isValid) return;
 
         applyGravity(deltaTime);
-        moveEntity(deltaTime);
+        moveEntity(deltaTime); // Collision handling is within moveEntity
         updateLogic(deltaTime);
     }
 
@@ -60,55 +59,51 @@ public abstract class Entity {
 
     protected void moveEntity(float deltaTime) {
         Vector3f deltaPosition = new Vector3f(velocity).mul(deltaTime);
-        // Store current position before attempting to move
-        Vector3f oldPosition = new Vector3f(position);
-        Vector3f newPosition = new Vector3f(position).add(deltaPosition);
-
-        CustomAABB currentWorldBounds = getBoundingBoxWorld();
+        Vector3f originalPosition = new Vector3f(position); // Keep original position for reference
 
         // --- Y-axis movement and collision ---
         if (deltaPosition.y != 0) {
-            position.y = newPosition.y; // Tentatively move Y
-            CustomAABB movedYBounds = getBoundingBoxWorld(); // Bounds after tentative Y move
-            boolean yCollision = false;
-            float adjustYTo = position.y;
+            position.y += deltaPosition.y; // Tentatively move Y
+            CustomAABB movedYBounds = getBoundingBoxWorld();
+            boolean yCollisionThisFrame = false;
 
             for (Block block : worldTerrain.getBlocks()) {
                 CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
-                if (movedYBounds.testAABB(blockAABB)) { // Check for overlap after Y move
-                    yCollision = true;
+                if (movedYBounds.testAABB(blockAABB)) {
+                    yCollisionThisFrame = true;
                     if (deltaPosition.y < 0) { // Moving down
-                        adjustYTo = blockAABB.max.y - localBoundingBox.min.y; // Land on top
+                        position.y = blockAABB.max.y - localBoundingBox.min.y + COLLISION_SKIN_WIDTH; // Land on top + skin
                         velocity.y = 0;
                         isOnGround = true;
                     } else { // Moving up
-                        adjustYTo = blockAABB.min.y - localBoundingBox.max.y; // Hit ceiling
+                        position.y = blockAABB.min.y - localBoundingBox.max.y - COLLISION_SKIN_WIDTH; // Hit ceiling - skin
                         velocity.y = 0;
                     }
-                    position.y = adjustYTo; // Correct position
                     break;
                 }
             }
-            if (!yCollision && deltaPosition.y < 0) { // If moved down and no collision, not on ground
-                isOnGround = false;
+            if (!yCollisionThisFrame) { // If moved Y and no collision
+                isOnGround = false; // Explicitly set if not colliding vertically
             }
+        } else {
+            // If not trying to move vertically, re-check ground status
+            // This helps if player walks off a ledge without vertical velocity input
+            checkIfOnGround();
         }
 
 
         // --- X-axis movement and collision ---
         if (deltaPosition.x != 0) {
-            position.x = newPosition.x; // Tentatively move X
+            position.x += deltaPosition.x; // Tentatively move X
             CustomAABB movedXBounds = getBoundingBoxWorld();
-            boolean xCollision = false;
 
             for (Block block : worldTerrain.getBlocks()) {
                 CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
                 if (movedXBounds.testAABB(blockAABB)) {
-                    xCollision = true;
                     if (deltaPosition.x < 0) { // Moving left
-                        position.x = blockAABB.max.x - localBoundingBox.min.x;
+                        position.x = blockAABB.max.x - localBoundingBox.min.x + COLLISION_SKIN_WIDTH;
                     } else { // Moving right
-                        position.x = blockAABB.min.x - localBoundingBox.max.x;
+                        position.x = blockAABB.min.x - localBoundingBox.max.x - COLLISION_SKIN_WIDTH;
                     }
                     velocity.x = 0;
                     break;
@@ -118,18 +113,16 @@ public abstract class Entity {
 
         // --- Z-axis movement and collision ---
         if (deltaPosition.z != 0) {
-            position.z = newPosition.z; // Tentatively move Z
+            position.z += deltaPosition.z; // Tentatively move Z
             CustomAABB movedZBounds = getBoundingBoxWorld();
-            boolean zCollision = false;
 
             for (Block block : worldTerrain.getBlocks()) {
                 CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
                 if (movedZBounds.testAABB(blockAABB)) {
-                    zCollision = true;
-                    if (deltaPosition.z < 0) { // Moving forward (typically -Z)
-                        position.z = blockAABB.max.z - localBoundingBox.min.z;
-                    } else { // Moving backward (typically +Z)
-                        position.z = blockAABB.min.z - localBoundingBox.max.z;
+                    if (deltaPosition.z < 0) { // Moving "forward" (typically decreasing Z)
+                        position.z = blockAABB.max.z - localBoundingBox.min.z + COLLISION_SKIN_WIDTH;
+                    } else { // Moving "backward" (typically increasing Z)
+                        position.z = blockAABB.min.z - localBoundingBox.max.z - COLLISION_SKIN_WIDTH;
                     }
                     velocity.z = 0;
                     break;
@@ -137,43 +130,37 @@ public abstract class Entity {
             }
         }
 
-        // Final ground check if Y velocity was near zero or became zero
-        if (Math.abs(velocity.y) < 0.01f) {
-            checkIfOnGround();
+        // An additional ground check can be useful after all movements,
+        // especially if skin width pushes entity slightly above ground.
+        // However, the Y-collision logic should primarily handle isOnGround.
+        // If velocity.y is very small (e.g. after landing), a final snap might be good.
+        if (Math.abs(velocity.y) < 0.1f) { // If Y velocity is small (e.g. after landing)
+            checkIfOnGround(); // Perform a final snap / ground check
         }
     }
 
     protected void checkIfOnGround() {
-        // Raycast slightly down from entity's bottom center of its local AABB, translated to world space
         CustomAABB worldBB = getBoundingBoxWorld();
-        Vector3f feetCenter = new Vector3f(position.x, worldBB.min.y, position.z); // Center of bottom face
-
-        Vector3f rayOrigin = new Vector3f(feetCenter.x, feetCenter.y, feetCenter.z);
+        // Start ray slightly inside the bottom of the AABB to avoid self-intersection issues if skin pushes out
+        Vector3f rayOrigin = new Vector3f(position.x, worldBB.min.y + COLLISION_SKIN_WIDTH * 0.5f, position.z);
         Vector3f rayDir = new Vector3f(0, -1, 0);
-        float checkDist = 0.05f; // Very small distance to check below feet
+        // Check distance needs to be slightly more than skin width to detect ground properly
+        float checkDist = COLLISION_SKIN_WIDTH * 1.5f;
         boolean groundFound = false;
 
         for (Block block : worldTerrain.getBlocks()) {
             CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
-            Vector2f nearFar = new Vector2f(); // For storing intersection results
+            Vector2f nearFar = new Vector2f();
 
-            // Check if the ray starting from just under the entity intersects with the block
             if (blockAABB.intersectRay(rayOrigin, rayDir, nearFar) && nearFar.x <= checkDist && nearFar.x >= 0) {
                 groundFound = true;
-                // Correct position precisely onto the ground if slightly interpenetrating
-                // This adjustment should ideally happen during Y-collision handling in moveEntity
-                if (position.y + localBoundingBox.min.y < blockAABB.max.y) {
-                    position.y = blockAABB.max.y - localBoundingBox.min.y;
-                }
-                if(velocity.y < 0) velocity.y = 0; // Stop vertical velocity if just landed
+                // Snap precisely to the surface, overriding any minor skin width effects from Y-collision
+                position.y = blockAABB.max.y - localBoundingBox.min.y;
+                if(velocity.y < 0) velocity.y = 0;
                 break;
             }
         }
         this.isOnGround = groundFound;
-
-        // If no ground found directly below by raycast, but velocity.y is zero (e.g. due to y-collision step),
-        // re-evaluate. This part can be tricky. The y-collision in moveEntity should primarily set isOnGround.
-        // This method is more of a secondary check or for initialization.
     }
 
     protected abstract void updateLogic(float deltaTime);
@@ -181,12 +168,13 @@ public abstract class Entity {
     public void teleport(Vector3f newPosition) {
         this.position.set(newPosition);
         this.velocity.set(0, 0, 0);
-        this.isOnGround = false;
-        checkIfOnGround();
+        this.isOnGround = false; // Force re-evaluation
+        checkIfOnGround(); // Snap to ground if applicable after teleport
     }
 
     public void addVelocity(Vector3f additionalVelocity) {
         this.velocity.add(additionalVelocity);
+        this.isOnGround = false; // Adding velocity likely means not on ground anymore, or needs re-check
     }
 
     public void kill() {
@@ -199,18 +187,10 @@ public abstract class Entity {
     public boolean isValid() { return isValid; }
     public boolean isOnGround() { return isOnGround; }
 
-    /**
-     * Gets the entity's local bounding box (dimensions centered at origin).
-     * @return A copy of the local CustomAABB.
-     */
     public CustomAABB getLocalBoundingBox() {
         return new CustomAABB(localBoundingBox.min, localBoundingBox.max);
     }
 
-    /**
-     * Gets the entity's bounding box in world coordinates.
-     * @return A new CustomAABB translated to the entity's current world position.
-     */
     public CustomAABB getBoundingBoxWorld() {
         return localBoundingBox.translate(position);
     }

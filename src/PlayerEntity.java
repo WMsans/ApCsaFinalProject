@@ -78,8 +78,8 @@ public class PlayerEntity extends LivingEntity {
     }
 
     private void handleKeyboardMovement(float deltaTime) {
-        Vector3f forwardXZ = new Vector3f((float)Math.sin(Math.toRadians(this.yaw)), 0, (float)Math.cos(Math.toRadians(this.yaw))).normalize();
-        Vector3f rightXZ = new Vector3f((float)Math.sin(Math.toRadians(this.yaw + 90)), 0, (float)Math.cos(Math.toRadians(this.yaw + 90))).normalize();
+        Vector3f forwardXZ = new Vector3f((float)Math.cos(Math.toRadians(this.yaw)), 0, (float)Math.sin(Math.toRadians(this.yaw))).normalize();
+        Vector3f rightXZ = new Vector3f((float)Math.cos(Math.toRadians(this.yaw + 90)), 0, (float)Math.sin(Math.toRadians(this.yaw + 90))).normalize();
         Vector3f desiredVelocityXZ = new Vector3f(0,0,0); // Store XZ components here
 
         float currentSpeed = playerMoveSpeed;
