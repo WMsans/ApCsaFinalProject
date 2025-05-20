@@ -60,7 +60,6 @@ public class Shader {
                     + GL20.glGetProgramInfoLog(programId, 1024));
         }
 
-        // Detach shaders after a successful link
         if (vertexShaderId != 0) {
             GL20.glDetachShader(programId, vertexShaderId);
         }
@@ -68,7 +67,6 @@ public class Shader {
             GL20.glDetachShader(programId, fragmentShaderId);
         }
 
-        // Validate the program (optional, good for debugging)
         GL20.glValidateProgram(programId);
         if (GL20.glGetProgrami(programId, GL20.GL_VALIDATE_STATUS) == 0) {
             System.err.println("Warning validating Shader code: "
@@ -79,17 +77,16 @@ public class Shader {
     public void createUniform(String uniformName) throws Exception {
         int uniformLocation = GL20.glGetUniformLocation(programId, uniformName);
         if (uniformLocation < 0) {
-            // It's not necessarily an error if a uniform is optimized out by the GLSL compiler
-            // if it's not used. So, we can choose to warn instead of throwing an exception.
             System.err.println("Could not find uniform (it might be unused/optimized out): " + uniformName);
-            // throw new Exception("Could not find uniform: " + uniformName);
+            // Storing -1 allows us to check later and avoid errors if a uniform is optimized out
+            // but still allow the program to run if the uniform is not critical or used in all conditions.
         }
         uniforms.put(uniformName, uniformLocation);
     }
 
     public void setUniform(String uniformName, Matrix4f value) {
         Integer location = uniforms.get(uniformName);
-        if (location == null || location < 0) return; // Uniform not found or inactive
+        if (location == null || location < 0) return;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer fb = stack.mallocFloat(16);
             value.get(fb);
@@ -126,13 +123,10 @@ public class Shader {
 
     public static String loadResource(String fileName) throws Exception {
         String result;
-        // The path should be relative to the classpath root.
-        // E.g., if shaders are in src/main/resources/shaders/vertex.glsl,
-        // fileName should be "/shaders/vertex.glsl"
-        try (InputStream in = Shader.class.getResourceAsStream(fileName);
+        try (InputStream in = Shader.class.getResourceAsStream(fileName); // Use getResourceAsStream for classpath
              BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
             if (in == null) {
-                throw new Exception("Cannot find resource: " + fileName);
+                throw new Exception("Cannot find resource: " + fileName + ". Make sure it's in the classpath, e.g., src/shaders/" + fileName);
             }
             result = reader.lines().collect(Collectors.joining("\n"));
         }

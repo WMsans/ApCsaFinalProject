@@ -16,9 +16,10 @@ public class Main implements Runnable {
     private Renderer renderer;
     private Terrain terrain;
     private Input input;
-    private PlayerEntity playerEntity; // Changed from Player to PlayerEntity
+    private PlayerEntity playerEntity;
+    private Config config; // Added config
 
-    private final String windowTitle = "LWJGL Minecraft Prototype - Entity System";
+    private final String windowTitle = "LWJGL Minecraft Prototype - Lighting";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
 
@@ -44,6 +45,9 @@ public class Main implements Runnable {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
+        // Load configuration
+        config = new Config("config.properties"); // Load from classpath
+
         window = new Window(windowTitle, initialWidth, initialHeight);
         window.create();
         input = new Input(window.getWindowHandle());
@@ -53,18 +57,18 @@ public class Main implements Runnable {
         glfwShowWindow(window.getWindowHandle());
         GL.createCapabilities();
 
-        glClearColor(0.5f, 0.7f, 1.0f, 0.0f);
+        glClearColor(0.1f, 0.1f, 0.15f, 0.0f); // Darker sky for better light perception
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = new Terrain(20, 3, 20); // Slightly larger terrain
+        terrain = new Terrain(20, 3, 20);
 
-        // Create the player entity
-        Vector3f playerStartPosition = new Vector3f(0, 5.0f, 0); // Start a bit higher to see gravity
+        Vector3f playerStartPosition = new Vector3f(0, 5.0f, 0);
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition);
 
-        renderer = new Renderer(playerEntity.getCamera()); // Renderer gets camera from PlayerEntity
+        // Pass config to Renderer
+        renderer = new Renderer(playerEntity.getCamera(), config);
     }
 
     private void loop() {
@@ -74,30 +78,27 @@ public class Main implements Runnable {
         while (!window.shouldClose()) {
             float currentTime = (float) glfwGetTime();
             deltaTime = currentTime - lastTime;
-            if (deltaTime > 0.1f) deltaTime = 0.1f; // Clamp delta time to avoid large jumps
+            if (deltaTime > 0.1f) deltaTime = 0.1f;
             lastTime = currentTime;
 
-            input.pollEvents(); // Update input states
+            input.pollEvents();
 
             if (input.isKeyPressed(GLFW_KEY_ESCAPE)) {
                 glfwSetWindowShouldClose(window.getWindowHandle(), true);
             }
 
-            // Update player entity (handles its own logic, movement, camera, interactions)
             playerEntity.update(deltaTime);
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderer.renderTerrain(terrain);
-            // Future: renderer.renderEntities(world.getEntities());
             window.swapBuffers();
-            glfwPollEvents();
+            glfwPollEvents(); // Moved to end of loop for consistency with input polling logic
         }
     }
 
     private void cleanup() {
         if (renderer != null) renderer.cleanup();
         if (terrain != null) terrain.cleanup();
-        // PlayerEntity cleanup (if it held GL resources, it would need a cleanup method)
 
         if (window != null && window.getWindowHandle() != NULL) {
             glfwFreeCallbacks(window.getWindowHandle());
