@@ -62,7 +62,7 @@ public class Main implements Runnable {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = new Terrain(64, config.getChunkSizeY() * 2, 64, config);
+        terrain = new Terrain(config);
 
         Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 20.0f, 0);
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
