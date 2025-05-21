@@ -38,6 +38,19 @@ public class Terrain {
     private static final float SPIRE_DENSITY_THRESHOLD = 0.4f;
     private static final float SPIRE_RADIUS_FACTOR = 0.15f;
 
+    // New color palettes
+    private static final Vector3f[] TERRAIN_COLORS = {
+            new Vector3f(0.545f, 0.118f, 1.0f), // #8c1eff
+            new Vector3f(0.949f, 0.133f, 1.0f), // #f222ff
+            new Vector3f(1.0f, 0.161f, 0.459f), // #ff2975
+            new Vector3f(1.0f, 0.565f, 0.122f)  // #ff901f
+    };
+    private static final Vector3f[] ISLAND_COLORS = {
+            new Vector3f(1.0f, 0.565f, 0.122f), // #ff901f
+            new Vector3f(1.0f, 0.827f, 0.098f)  // #ffd319
+    };
+    private static final int COLOR_TRANSITION_RANGE_Y = 10; // How many Y levels for a full color transition cycle
+
 
     public Terrain(Config config) {
         this.chunks = new HashMap<>();
@@ -88,6 +101,25 @@ public class Terrain {
         noiseGen_SpireShape.SetFrequency(0.05f);
     }
 
+    private Vector3f lerpColor(Vector3f color1, Vector3f color2, float t) {
+        t = Math.max(0, Math.min(1, t)); // Clamp t to [0, 1]
+        float r = color1.x * (1 - t) + color2.x * t;
+        float g = color1.y * (1 - t) + color2.y * t;
+        float b = color1.z * (1 - t) + color2.z * t;
+        return new Vector3f(r, g, b);
+    }
+
+    private Vector3f getInterpolatedColor(float worldY, Vector3f[] palette) {
+        // Determine the base color index and the transition progress
+        float yProgress = (worldY / COLOR_TRANSITION_RANGE_Y);
+        int colorIndex1 = (int) Math.floor(yProgress) % palette.length;
+        int colorIndex2 = (colorIndex1 + 1) % palette.length;
+        float t = yProgress - (float)Math.floor(yProgress); // Transition factor between colorIndex1 and colorIndex2
+
+        return lerpColor(palette[colorIndex1], palette[colorIndex2], t);
+    }
+
+
     private void generateChunk(ChunkId chunkId) {
         Chunk newChunk = new Chunk(chunkId); // This now initializes its own AABB and an empty ChunkMesh
         float worldChunkXBase = (float)chunkId.x * Chunk.CHUNK_SIZE_X;
@@ -105,11 +137,12 @@ public class Terrain {
                 float currentSurfaceY = SEA_LEVEL + baseHeightNoiseVal * BASE_TERRAIN_AMPLITUDE;
 
                 float islandPlacementVal = (noiseGen_FloatingIslandPlacement.GetNoise(worldX, worldZ) + 1) / 2f;
-                float spirePlacementNoise = noiseGen_SpirePlacement.GetNoise(worldX, worldZ); // Raw Distance2 value
+                float spirePlacementNoise = noiseGen_SpirePlacement.GetNoise(worldX, worldZ);
 
                 for (int ly = 0; ly < Chunk.CHUNK_SIZE_Y; ly++) {
                     float worldY = worldChunkYBase + ly + 0.5f;
                     boolean placeBlock = false;
+                    Vector3f color = new Vector3f(0.5f, 0.5f, 0.5f); // Default color
 
                     float densityVal3D = noiseGen_3DDensity.GetNoise(worldX, worldY, worldZ);
 
@@ -122,7 +155,7 @@ public class Terrain {
                             placeBlock = true;
                         }
                     }
-
+                    boolean isIslandBlock = false;
                     if (islandPlacementVal > ISLAND_PLACEMENT_THRESHOLD && worldY > MIN_ISLAND_ALTITUDE) {
                         float islandShapeVal = noiseGen_FloatingIslandShape.GetNoise(worldX, worldY, worldZ);
                         float islandCoreBaseY = MIN_ISLAND_ALTITUDE + (islandPlacementVal - ISLAND_PLACEMENT_THRESHOLD) * 50.0f;
@@ -131,6 +164,7 @@ public class Terrain {
                         if (worldY > islandCoreBaseY && worldY < islandCoreTopY) {
                             if (islandShapeVal > ISLAND_DENSITY_THRESHOLD) {
                                 placeBlock = true;
+                                isIslandBlock = true;
                             } else if (islandShapeVal < -0.3f && placeBlock){
                                 placeBlock = false;
                             }
@@ -139,14 +173,8 @@ public class Terrain {
                         }
                     }
 
-                    // For spirePlacementNoise (Distance2), lower values mean closer to a spire center.
-                    // We need to define what "close enough" means. SPIRE_PLACEMENT_THRESHOLD could be e.g., 0.05f
-                    // if Distance2 output is typically 0 to 1. Let's adjust its use.
-                    // A threshold of 0.75f for Distance2 is very high, it should be low for "close".
-                    // Let's assume SPIRE_PLACEMENT_THRESHOLD (e.g., 0.02f for Distance2 output usually in [0,1])
-                    // defines "close enough to a spire center".
-                    float actualSpirePlacementThreshold = 0.02f; // Example for Distance2 where lower is better
-
+                    float actualSpirePlacementThreshold = 0.02f;
+                    boolean isSpireBlock = false;
                     if (spirePlacementNoise < actualSpirePlacementThreshold && worldY > MIN_SPIRE_BASE_ALTITUDE && worldY < currentSurfaceY + MAX_SPIRE_HEIGHT_ABOVE_BASE) {
                         float distToSpireCenterApprox = (float)Math.sqrt(spirePlacementNoise / actualSpirePlacementThreshold) * (Chunk.CHUNK_SIZE_X * 0.5f);
                         float normalizedYInSpire = (worldY - MIN_SPIRE_BASE_ALTITUDE) / MAX_SPIRE_HEIGHT_ABOVE_BASE;
@@ -156,42 +184,33 @@ public class Terrain {
                             float spireBodyNoise = (noiseGen_SpireShape.GetNoise(worldX * 0.5f, worldY * 2.0f, worldZ * 0.5f) +1)/2f;
                             if (spireBodyNoise > SPIRE_DENSITY_THRESHOLD - (normalizedYInSpire * 0.2f) ) {
                                 placeBlock = true;
+                                isSpireBlock = true;
                             }
                         }
                     }
 
 
                     if (placeBlock) {
-                        Vector3f color;
-                        if (worldY < SEA_LEVEL - 20) color = new Vector3f(0.3f, 0.3f, 0.35f);
-                        else if (worldY < currentSurfaceY - 1.5f) color = new Vector3f(0.5f, 0.45f, 0.4f);
-                        else if (worldY < currentSurfaceY + 0.5f) color = new Vector3f(0.2f, 0.7f, 0.2f);
-                        else color = new Vector3f(0.6f, 0.6f, 0.6f);
-
-                        if (islandPlacementVal > ISLAND_PLACEMENT_THRESHOLD && worldY > MIN_ISLAND_ALTITUDE &&
-                                noiseGen_FloatingIslandShape.GetNoise(worldX, worldY, worldZ) > ISLAND_DENSITY_THRESHOLD) {
-                            color = new Vector3f(0.7f, 0.7f, 0.3f);
+                        if (isIslandBlock) {
+                            color = getInterpolatedColor(worldY, ISLAND_COLORS);
+                        } else if (isSpireBlock) {
+                            // Spire color logic - could also use a palette or keep the existing one
+                            color = new Vector3f(0.4f, 0.4f, 0.8f); // Default spire color
+                            // Example of pattern for spires, if desired:
+                            // color = getInterpolatedColor(worldY, new Vector3f[]{new Vector3f(0.4f, 0.4f, 0.8f), new Vector3f(0.6f, 0.6f, 0.9f)});
                         }
-                        // Check again for spire coloration with the corrected understanding of Distance2
-                        if (spirePlacementNoise < actualSpirePlacementThreshold && worldY > MIN_SPIRE_BASE_ALTITUDE) {
-                            float distToSpireCenterApprox = (float)Math.sqrt(spirePlacementNoise / actualSpirePlacementThreshold) * (Chunk.CHUNK_SIZE_X * 0.5f);
-                            float normalizedYInSpire = (worldY - MIN_SPIRE_BASE_ALTITUDE) / MAX_SPIRE_HEIGHT_ABOVE_BASE;
-                            if (normalizedYInSpire < 0) normalizedYInSpire = 0; // Clamp
-                            if (normalizedYInSpire > 1) normalizedYInSpire = 1; // Clamp
-                            float spireRadiusAtY = Chunk.CHUNK_SIZE_X * SPIRE_RADIUS_FACTOR * (1.0f - normalizedYInSpire * 0.7f);
-                            if(distToSpireCenterApprox < spireRadiusAtY) color = new Vector3f(0.4f, 0.4f, 0.8f);
+                        else { // Regular terrain
+                            color = getInterpolatedColor(worldY, TERRAIN_COLORS);
                         }
-
                         tempBlockList.add(new Block(worldX, worldY, worldZ, color));
                     }
                 }
             }
         }
-        // Add all generated blocks to the chunk, which will trigger one mesh rebuild flag
         for(Block b : tempBlockList) {
-            newChunk.addBlock(b); // addBlock in Chunk sets needsMeshRebuild = true
+            newChunk.addBlock(b);
         }
-        newChunk.getOrCreateMesh(); // Force initial mesh generation after blocks are added
+        newChunk.getOrCreateMesh();
         chunks.put(chunkId, newChunk);
     }
 
@@ -220,7 +239,7 @@ public class Terrain {
         if (block == null) return;
         ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(block.getPosition());
         Chunk chunk = getChunk(chunkId);
-        chunk.addBlock(block); // This will flag the chunk for mesh rebuild
+        chunk.addBlock(block);
     }
 
     public boolean removeBlock(Block blockToRemove) {
@@ -228,7 +247,7 @@ public class Terrain {
         ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(blockToRemove.getPosition());
         Chunk chunk = getChunk(chunkId);
         if (chunk != null) {
-            boolean removed = chunk.removeBlock(blockToRemove); // This flags for rebuild
+            boolean removed = chunk.removeBlock(blockToRemove);
             return removed;
         }
         return false;
@@ -238,16 +257,15 @@ public class Terrain {
         ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(worldPosition);
         Chunk chunk = getChunk(chunkId);
         if (chunk != null) {
-            // Iterate over a copy for safe removal, or use an iterator
             Block toRemove = null;
-            for (Block b : chunk.getModifiableBlocks()) { // Use modifiable if iterating and removing
+            for (Block b : chunk.getModifiableBlocks()) {
                 if (b.getPosition().distanceSquared(worldPosition) < 0.001f) {
                     toRemove = b;
                     break;
                 }
             }
             if (toRemove != null) {
-                return chunk.removeBlock(toRemove); // This flags for rebuild
+                return chunk.removeBlock(toRemove);
             }
         }
         return false;
@@ -257,10 +275,7 @@ public class Terrain {
         ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(worldPosition);
         Chunk chunk = getChunk(chunkId);
         if (chunk != null) {
-            // Check against the chunk's block list (which is efficient if few blocks per chunk)
-            // For very dense chunks, a spatial data structure within the chunk might be better,
-            // but for now, direct iteration is fine given block positions are world absolute.
-            for (Block block : chunk.getBlocks()) { // Using getBlocks() which is unmodifiable
+            for (Block block : chunk.getBlocks()) {
                 if (block.getPosition().distanceSquared(worldPosition) < 0.001f) {
                     return true;
                 }
@@ -287,7 +302,7 @@ public class Terrain {
                     if (checkedChunkIds.add(currentChunkId)) {
                         Chunk chunk = getChunk(currentChunkId);
                         if (chunk != null) {
-                            relevantBlocks.addAll(chunk.getBlocks()); // Use unmodifiable list
+                            relevantBlocks.addAll(chunk.getBlocks());
                         }
                     }
                 }
@@ -304,7 +319,7 @@ public class Terrain {
                     ChunkId currentId = new ChunkId(centerChunkId.x + dx, centerChunkId.y + dy, centerChunkId.z + dz);
                     Chunk chunk = getChunk(currentId);
                     if (chunk != null) {
-                        blocksInRadius.addAll(chunk.getBlocks()); // Use unmodifiable list
+                        blocksInRadius.addAll(chunk.getBlocks());
                     }
                 }
             }
@@ -318,7 +333,7 @@ public class Terrain {
 
     public void cleanup() {
         for (Chunk chunk : chunks.values()) {
-            chunk.cleanupMesh(); // Ensure each chunk's mesh is cleaned
+            chunk.cleanupMesh();
         }
         chunks.clear();
     }
