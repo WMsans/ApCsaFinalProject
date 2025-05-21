@@ -1,8 +1,9 @@
-import Input.Config;
+import Configuration.Config;
 import World.Block;
 import World.Terrain;
+import World.Chunk.*;
 import org.joml.Matrix4f;
-import org.joml.Vector3f; // Added
+import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
@@ -11,14 +12,14 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.List; // For list of blocks/chunks
 
 public class Renderer {
 
     private Shader shader;
     private Camera camera;
-    private Config config; // Added Config
+    private Config config; // For render distance and other settings
 
-    // Cube vertices (position + normal)
     private final float[] cubeVertices = {
             // Positions          // Normals
             // Front face
@@ -66,14 +67,14 @@ public class Renderer {
     private int cubeVboId;
     private int cubeEboId;
 
-    private Vector3f lightPosition; // Store light position
-    private float gammaValue;       // Store gamma
+    private Vector3f lightPosition;
+    private float gammaValue;
 
-    public Renderer(Camera camera, Config config) { // Added Config
+    public Renderer(Camera camera, Config config) {
         this.camera = camera;
-        this.config = config; // Store config
-        this.lightPosition = config.getLightPosition(); // Get from config
-        this.gammaValue = config.getGamma();           // Get from config
+        this.config = config;
+        this.lightPosition = config.getLightPosition();
+        this.gammaValue = config.getGamma();
 
         try {
             initShader();
@@ -95,10 +96,10 @@ public class Renderer {
         shader.createUniform("viewMatrix");
         shader.createUniform("modelMatrix");
         shader.createUniform("blockColor");
-        // New uniforms for lighting
         shader.createUniform("lightPos");
         shader.createUniform("lightColor");
         shader.createUniform("gamma");
+        shader.createUniform("viewPos"); // Make sure this is created
     }
 
     private void initCubeMesh() {
@@ -114,12 +115,9 @@ public class Renderer {
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, cubeVboId);
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, verticesBuffer, GL15.GL_STATIC_DRAW);
 
-            // Vertex attribute pointers
-            // Position attribute (location 0)
-            GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 6 * Float.BYTES, 0); // Stride is 6 floats now
+            GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 6 * Float.BYTES, 0);
             GL20.glEnableVertexAttribArray(0);
-            // Normal attribute (location 1)
-            GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES); // Offset is 3 floats
+            GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES);
             GL20.glEnableVertexAttribArray(1);
 
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
@@ -137,32 +135,50 @@ public class Renderer {
         }
     }
 
-    public void renderTerrain(Terrain terrain) {
+    public void renderTerrain(Terrain terrain, Vector3f playerPosition) {
         shader.bind();
         shader.setUniform("projectionMatrix", camera.getProjectionMatrix());
         shader.setUniform("viewMatrix", camera.getViewMatrix());
-
-        // Set lighting uniforms (once per frame or if they change)
         shader.setUniform("lightPos", lightPosition);
-        shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f)); // White light
+        shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
         shader.setUniform("gamma", gammaValue);
         shader.setUniform("viewPos", camera.getPosition());
 
-
         GL30.glBindVertexArray(cubeVaoId);
-        // GL20.glEnableVertexAttribArray(0); // Position (already enabled with VAO or in init)
-        // GL20.glEnableVertexAttribArray(1); // Normal (already enabled with VAO or in init)
 
-        for (Block block : terrain.getBlocks()) {
-            Matrix4f modelMatrix = new Matrix4f().translate(block.getPosition());
-            shader.setUniform("modelMatrix", modelMatrix);
-            shader.setUniform("blockColor", block.getColor());
+        ChunkId playerChunkId = Chunk.getChunkIdAtWorldPosition(playerPosition);
+        int renderDist = config.getRenderDistanceInChunks();
 
-            GL11.glDrawElements(GL11.GL_TRIANGLES, cubeIndices.length, GL11.GL_UNSIGNED_INT, 0);
+        // Iterate through chunks in render distance
+        for (int dx = -renderDist; dx <= renderDist; dx++) {
+            for (int dy = -renderDist; dy <= renderDist; dy++) { // Iterate Y chunks as well
+                for (int dz = -renderDist; dz <= renderDist; dz++) {
+                    ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
+                    Chunk chunkToRender = terrain.getChunk(currentChunkId);
+
+                    if (chunkToRender != null) {
+                        // Optional: Frustum culling for the entire chunk AABB could go here
+                        // if (!camera.isAABBInFrustum(chunkToRender.getMinCorner(), chunkToRender.getMaxCorner())) {
+                        //    continue;
+                        // }
+
+                        for (Block block : chunkToRender.getBlocks()) {
+                            // Optional: Frustum culling per block (more expensive)
+                            // if (!camera.isPointInFrustum(block.getPosition())) continue; // Simple point culling
+                            // Or AABB culling for block:
+                            // CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
+                            // if (!camera.isAABBInFrustum(blockAABB.min, blockAABB.max)) continue;
+
+
+                            Matrix4f modelMatrix = new Matrix4f().translate(block.getPosition());
+                            shader.setUniform("modelMatrix", modelMatrix);
+                            shader.setUniform("blockColor", block.getColor());
+                            GL11.glDrawElements(GL11.GL_TRIANGLES, cubeIndices.length, GL11.GL_UNSIGNED_INT, 0);
+                        }
+                    }
+                }
+            }
         }
-
-        // GL20.glDisableVertexAttribArray(1); // No need to disable if VAO handles it
-        // GL20.glDisableVertexAttribArray(0);
         GL30.glBindVertexArray(0);
         shader.unbind();
     }

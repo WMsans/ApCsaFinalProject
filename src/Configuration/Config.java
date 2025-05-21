@@ -1,3 +1,5 @@
+package Configuration;
+
 import World.Chunk.*; // Import Chunk for setting dimensions
 import java.io.IOException;
 import java.io.InputStream;

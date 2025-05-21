@@ -22,7 +22,7 @@ void main() {
     vec3 diffuse = diff * lightColor;
 
     // For now, no specular lighting to keep it simpler
-    // vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 viewDir = normalize(viewPos - FragPos);
     // vec3 reflectDir = reflect(-lightDir, norm);
     // float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32); // 32 is shininess
     // vec3 specular = 0.5 * spec * lightColor; // Specular strength 0.5

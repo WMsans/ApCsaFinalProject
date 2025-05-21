@@ -46,7 +46,7 @@ public class Main implements Runnable {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        config = new Config("config.properties");
+        config = new Config("Configuration/config.properties");
 
         window = new Window(windowTitle, initialWidth, initialHeight);
         window.create();
@@ -68,7 +68,7 @@ public class Main implements Runnable {
         terrain = new Terrain(64, config.getChunkSizeY() * 2, 64, config);
 
 
-        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 5.0f, 0); // Start above generated terrain
+        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 20.0f, 0); // Start above generated terrain
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
 
         renderer = new Renderer(playerEntity.getCamera(), config);
