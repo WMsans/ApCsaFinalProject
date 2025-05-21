@@ -99,13 +99,11 @@ public class Camera {
         return new Matrix4f().perspective(fov, aspectRatio, zNear, zFar);
     }
 
-    // New method to update the frustum based on current view and projection
     public void updateFrustum() {
         Matrix4f viewProjMatrix = new Matrix4f(getProjectionMatrix()).mul(getViewMatrix());
         frustum.update(viewProjMatrix);
     }
 
-    // New method for frustum culling check
     public boolean isAABBInFrustum(CustomAABB aabb) {
         return frustum.isAABBInside(aabb);
     }

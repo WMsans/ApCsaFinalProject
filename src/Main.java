@@ -64,7 +64,7 @@ public class Main implements Runnable {
 
         terrain = new Terrain(config);
 
-        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 20.0f, 0);
+        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 100.0f, 0);
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
 
         renderer = new Renderer(playerEntity.getCamera(), config);

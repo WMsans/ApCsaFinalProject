@@ -61,7 +61,7 @@ public class Frustum {
     }
 
     public boolean isAABBInside(CustomAABB aabb) {
-        for (int i = 0; i < 6; i++) {
+        /*for (int i = 0; i < 6; i++) {
             Plane p = planes[i];
             // Find the vertex of the AABB that is furthest in the direction of the plane's normal
             Vector3f furthestVertex = new Vector3f();
@@ -69,10 +69,10 @@ public class Frustum {
             furthestVertex.y = p.normal.y > 0 ? aabb.max.y : aabb.min.y;
             furthestVertex.z = p.normal.z > 0 ? aabb.max.z : aabb.min.z;
 
-            if (p.getSignedDistanceToPoint(furthestVertex) < 0) {
-                return false; // AABB is outside this plane
+            if (p.getSignedDistanceToPoint(furthestVertex) > 0) {
+                return false;
             }
-        }
+        }*/
         return true; // AABB is inside all planes
     }
 

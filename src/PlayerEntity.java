@@ -12,9 +12,6 @@ import Configuration.Config;
 import Input.Input;
 import static org.lwjgl.glfw.GLFW.*; // For key codes
 
-// Required for glfwGetTime() if you were to use it directly here, but we pass currentTime now
-// import static org.lwjgl.glfw.GLFW.glfwGetTime;
-
 public class PlayerEntity extends LivingEntity {
     private final Input input;
     private final Window window;
@@ -355,7 +352,7 @@ public class PlayerEntity extends LivingEntity {
     public void onEntityInteraction(Entity target, Hand hand) {
         if (target instanceof LivingEntity && hand == Hand.MAIN_HAND) {
             ItemStack mainHandItem = inventory.getEquipped(EquipmentSlot.MAIN_HAND);
-            float damage = 1.0f; // Base damage, could be modified by item
+            float damage = 1.0f; // TODO: Base damage, could be modified by item
             // if (mainHandItem != null && !mainHandItem.isEmpty()) { /* Modify damage based on item */ }
             this.attackLivingEntity((LivingEntity)target, damage);
         }
