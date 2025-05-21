@@ -5,14 +5,6 @@ import World.Chunk.*;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
-// GL15, GL20, GL30 are used by ChunkMesh now
-// import org.lwjgl.opengl.GL15;
-// import org.lwjgl.opengl.GL20;
-// import org.lwjgl.opengl.GL30;
-// import org.lwjgl.system.MemoryUtil;
-
-// import java.nio.FloatBuffer; // Handled by ChunkMesh
-// import java.nio.IntBuffer; // Handled by ChunkMesh
 import java.util.List;
 
 public class Renderer {
@@ -21,7 +13,6 @@ public class Renderer {
     private Camera camera;
     private Config config;
 
-    private Vector3f lightPosition;
     private float gammaValue;
 
     // Cube mesh data and IDs are removed, as this is now handled by ChunkMesh
@@ -29,7 +20,6 @@ public class Renderer {
     public Renderer(Camera camera, Config config) {
         this.camera = camera;
         this.config = config;
-        this.lightPosition = config.getLightPosition();
         this.gammaValue = config.getGamma();
 
         try {
@@ -51,14 +41,11 @@ public class Renderer {
         shader.createUniform("projectionMatrix");
         shader.createUniform("viewMatrix");
         shader.createUniform("modelMatrix");
-        // shader.createUniform("blockColor"); // Removed, color is now a vertex attribute
         shader.createUniform("lightPos");
         shader.createUniform("lightColor");
         shader.createUniform("gamma");
         shader.createUniform("viewPos");
     }
-
-    // initCubeMesh() is removed
 
     public void renderTerrain(Terrain terrain, Vector3f playerPosition) {
         camera.updateFrustum(); // Update frustum planes once per frame
@@ -66,7 +53,7 @@ public class Renderer {
         shader.bind();
         shader.setUniform("projectionMatrix", camera.getProjectionMatrix());
         shader.setUniform("viewMatrix", camera.getViewMatrix());
-        shader.setUniform("lightPos", lightPosition);
+        shader.setUniform("lightPos", camera.getPosition());
         shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f)); // White light
         shader.setUniform("gamma", gammaValue);
         shader.setUniform("viewPos", camera.getPosition());
@@ -109,7 +96,5 @@ public class Renderer {
         if (shader != null) {
             shader.cleanup();
         }
-        // Individual chunk meshes should be cleaned up by the Terrain or Chunk objects themselves
-        // when they are unloaded. Renderer doesn't own them directly anymore.
     }
 }

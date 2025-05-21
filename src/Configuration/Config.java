@@ -20,11 +20,11 @@ public class Config {
     public float jumpEndEarlyGravityModifier;
     public float coyoteTime;
     public float jumpBufferTime;
-    public float flySpeed; // New
+    public float flySpeed;
 
     // Lighting Parameters
     public float gamma;
-    public Vector3f lightPosition;
+    // public Vector3f lightPosition; // REMOVE this line
 
     // World/Chunk Parameters
     public int chunkSizeX;
@@ -58,9 +58,6 @@ public class Config {
     private void setDefaultProperties() {
         // Lighting defaults
         properties.setProperty("gamma", "0.2");
-        properties.setProperty("lightPositionX", "100.0");
-        properties.setProperty("lightPositionY", "100.0");
-        properties.setProperty("lightPositionZ", "100.0");
 
         // Movement defaults
         properties.setProperty("player.maxSpeed", "5.0");
@@ -73,7 +70,7 @@ public class Config {
         properties.setProperty("player.jumpEndEarlyGravityModifier", "2.5");
         properties.setProperty("player.coyoteTime", "0.1");
         properties.setProperty("player.jumpBufferTime", "0.1");
-        properties.setProperty("player.flySpeed", "12.0"); // New default
+        properties.setProperty("player.flySpeed", "12.0");
 
         // World/Chunk defaults
         properties.setProperty("world.chunkSizeX", "16");
@@ -88,10 +85,6 @@ public class Config {
     private void loadProperties() {
         // Lighting
         this.gamma = Float.parseFloat(properties.getProperty("gamma"));
-        float lightX = Float.parseFloat(properties.getProperty("lightPositionX"));
-        float lightY = Float.parseFloat(properties.getProperty("lightPositionY"));
-        float lightZ = Float.parseFloat(properties.getProperty("lightPositionZ"));
-        this.lightPosition = new Vector3f(lightX, lightY, lightZ);
 
         // Movement
         this.maxSpeed = Float.parseFloat(properties.getProperty("player.maxSpeed"));
@@ -104,7 +97,7 @@ public class Config {
         this.jumpEndEarlyGravityModifier = Float.parseFloat(properties.getProperty("player.jumpEndEarlyGravityModifier"));
         this.coyoteTime = Float.parseFloat(properties.getProperty("player.coyoteTime"));
         this.jumpBufferTime = Float.parseFloat(properties.getProperty("player.jumpBufferTime"));
-        this.flySpeed = Float.parseFloat(properties.getProperty("player.flySpeed", "12.0")); // New, with default fallback
+        this.flySpeed = Float.parseFloat(properties.getProperty("player.flySpeed", "12.0"));
 
         // World/Chunk
         this.chunkSizeX = Integer.parseInt(properties.getProperty("world.chunkSizeX"));
@@ -118,7 +111,7 @@ public class Config {
 
     // Getters
     public float getGamma() { return gamma; }
-    public Vector3f getLightPosition() { return lightPosition; }
+    // public Vector3f getLightPosition() { return lightPosition; } // REMOVE this line
     public float getMaxSpeed() { return maxSpeed; }
     public float getAcceleration() { return acceleration; }
     public float getGroundDeceleration() { return groundDeceleration; }
