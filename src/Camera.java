@@ -1,3 +1,5 @@
+import Graphics.Frustum; // New import
+import Physics.CustomAABB; // New import
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -7,12 +9,14 @@ public class Camera {
     private float yaw;
 
     private Window window;
+    private Frustum frustum; // New field
 
     public Camera(Vector3f initialPosition, Window window) {
         this.position = new Vector3f(initialPosition);
         this.pitch = 0.0f;
-        this.yaw = -90.0f;
+        this.yaw = -90.0f; // Initialize yaw to look along negative Z
         this.window = window;
+        this.frustum = new Frustum(); // Initialize frustum
     }
 
     public void setPosition(Vector3f position) {
@@ -56,7 +60,9 @@ public class Camera {
         // Check if looking nearly straight up or down
         if (Math.abs(forward.y) > 0.999f) {
             // If looking straight up/down, strafing should be based on yaw, along the XZ plane
-            rightDir.x = (float)Math.cos(Math.toRadians(yaw + 90.0f));
+            // Rotate worldUp around Y by yaw to get an appropriate "right" for this case
+            // However, simpler is to calculate right based on yaw directly in XZ plane
+            rightDir.x = (float)Math.cos(Math.toRadians(yaw + 90.0f)); // Corrected: yaw is angle from +X towards +Z
             rightDir.y = 0; // Keep strafe horizontal to world in this edge case
             rightDir.z = (float)Math.sin(Math.toRadians(yaw + 90.0f));
         } else {
@@ -74,16 +80,38 @@ public class Camera {
     public Matrix4f getViewMatrix() {
         Vector3f direction = getForwardDirection(true);
         Vector3f up = new Vector3f(0, 1, 0); // World up
+        // If looking straight up/down, the standard cross product for 'right' can become unstable.
+        // To derive a stable 'up' vector for the lookAt matrix:
+        // Calculate the actual 'right' vector.
+        // Then cross 'right' with 'forward' to get the camera's 'up'.
+        Vector3f actualRight = getRightDirection(true); // Use the robust 3D right
+        Vector3f cameraUp = new Vector3f(actualRight).cross(direction).normalize(); // camera's local up
+
         Vector3f lookAtTarget = new Vector3f(position).add(direction);
-        return new Matrix4f().lookAt(position, lookAtTarget, up);
+        return new Matrix4f().lookAt(position, lookAtTarget, cameraUp);
     }
 
     public Matrix4f getProjectionMatrix() {
         float fov = (float) Math.toRadians(45.0f); // Field of View
         float aspectRatio = window.getAspectRatio();
         float zNear = 0.1f;
-        float zFar = 200.0f;
+        float zFar = 200.0f; // Consider making zFar configurable or larger for large render distances
         return new Matrix4f().perspective(fov, aspectRatio, zNear, zFar);
+    }
+
+    // New method to update the frustum based on current view and projection
+    public void updateFrustum() {
+        Matrix4f viewProjMatrix = new Matrix4f(getProjectionMatrix()).mul(getViewMatrix());
+        frustum.update(viewProjMatrix);
+    }
+
+    // New method for frustum culling check
+    public boolean isAABBInFrustum(CustomAABB aabb) {
+        return frustum.isAABBInside(aabb);
+    }
+
+    public boolean isPointInFrustum(Vector3f point) {
+        return frustum.isPointInside(point);
     }
 
     public Vector3f getPosition() {

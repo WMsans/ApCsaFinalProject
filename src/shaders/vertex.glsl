@@ -1,20 +1,23 @@
 #version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aNormal; // Normal attribute
+layout (location = 0) in vec3 aPos;        // Vertex Position
+layout (location = 1) in vec3 aNormal;     // Vertex Normal
+layout (location = 2) in vec3 aColor;      // Vertex Color (New)
 
-out vec3 FragPos;
-out vec3 Normal;
-out vec3 BlockColorData; // Pass block color if needed, or set in fragment shader
+out vec3 FragPos_world; // Fragment position in world space
+out vec3 Normal_world;  // Normal in world space
+out vec3 VertexColor_FS;  // Color to pass to fragment shader
 
 uniform mat4 modelMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 projectionMatrix;
-uniform vec3 blockColor; // Receive block color from Java
 
 void main() {
-    FragPos = vec3(modelMatrix * vec4(aPos, 1.0));
-    Normal = mat3(transpose(inverse(modelMatrix))) * aNormal; // Transform normal to world space
-    BlockColorData = blockColor;
+    FragPos_world = vec3(modelMatrix * vec4(aPos, 1.0));
+    // Calculate normal in world space. Use transpose(inverse(modelMatrix)) for non-uniform scaling.
+    // For uniform scaling, mat3(modelMatrix) * aNormal is often sufficient and cheaper.
+    // Assuming uniform scaling or no scaling for normals of blocks within a chunk relative to chunk transform.
+    Normal_world = mat3(transpose(inverse(modelMatrix))) * aNormal;
+    VertexColor_FS = aColor;
 
-    gl_Position = projectionMatrix * viewMatrix * vec4(FragPos, 1.0);
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(aPos, 1.0);
 }

@@ -1,35 +1,33 @@
 package World.Chunk;
 
+import Physics.CustomAABB; // New import
 import org.joml.Vector3f;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArrayList; // Keep for thread-safe block modification
 import World.Block;
 
 
-/**
- * Represents a 3D segment of the world containing blocks.
- * Chunk coordinates are integer-based (e.g., 0,0,0 or 1,0,0).
- * World coordinates of blocks within this chunk will still be their absolute world positions.
- */
 public class Chunk {
     private final ChunkId id;
-    private final List<Block> blocks; // Blocks store their absolute world positions
-    private final Vector3f minCorner; // World coordinates of the minimum corner of this chunk
-    private final Vector3f maxCorner; // World coordinates of the maximum corner of this chunk
-    public static int CHUNK_SIZE_X = 16; // Default, will be updated by Config
+    private final List<Block> blocks;
+    private final Vector3f minCorner;
+    private final Vector3f maxCorner;
+    private final CustomAABB boundingBox; // New AABB for the chunk
+
+    private ChunkMesh chunkMesh; // New field for batched mesh
+    private boolean needsMeshRebuild = true; // Flag to rebuild mesh
+
+    public static int CHUNK_SIZE_X = 16;
     public static int CHUNK_SIZE_Y = 16;
     public static int CHUNK_SIZE_Z = 16;
 
 
     public Chunk(ChunkId id) {
         this.id = id;
-        // Use CopyOnWriteArrayList for thread-safe modifications if blocks are added/removed concurrently.
-        // For single-threaded updates, ArrayList is fine.
-        this.blocks = new CopyOnWriteArrayList<>(); // Or new ArrayList<>();
+        this.blocks = new CopyOnWriteArrayList<>();
 
-        // Calculate world boundaries of this chunk
         this.minCorner = new Vector3f(
                 (float)id.x * CHUNK_SIZE_X,
                 (float)id.y * CHUNK_SIZE_Y,
@@ -40,6 +38,8 @@ public class Chunk {
                 (float)(id.y + 1) * CHUNK_SIZE_Y,
                 (float)(id.z + 1) * CHUNK_SIZE_Z
         );
+        this.boundingBox = new CustomAABB(this.minCorner, this.maxCorner); // Initialize AABB
+        this.chunkMesh = new ChunkMesh(); // Initialize mesh object
     }
 
     public ChunkId getId() {
@@ -47,33 +47,30 @@ public class Chunk {
     }
 
     public void addBlock(Block block) {
-        // Optional: Could add a check here to ensure the block's position
-        // actually falls within this chunk's boundaries, though it's generally
-        // the responsibility of the World/Terrain manager to place it correctly.
         if (!blocks.contains(block)) {
             blocks.add(block);
+            needsMeshRebuild = true; // Mark for rebuild
         }
     }
 
     public boolean removeBlock(Block block) {
-        return blocks.remove(block);
+        boolean removed = blocks.remove(block);
+        if (removed) {
+            needsMeshRebuild = true; // Mark for rebuild
+        }
+        return removed;
     }
 
-    /**
-     * Returns an unmodifiable view of the blocks in this chunk.
-     * This prevents external modification of the internal list.
-     * The blocks themselves are mutable.
-     * @return An unmodifiable list of blocks.
-     */
     public List<Block> getBlocks() {
-        return Collections.unmodifiableList(blocks);
+        return Collections.unmodifiableList(blocks); // Still provide access if needed elsewhere
     }
 
-    /**
-     * Checks if a given world position is within this chunk's boundaries.
-     * @param worldPosition The world position to check.
-     * @return True if the position is within this chunk, false otherwise.
-     */
+    // Provides direct access to the mutable list for mesh building, use with caution
+    public List<Block> getModifiableBlocks() {
+        return blocks;
+    }
+
+
     public boolean isWorldPositionInChunk(Vector3f worldPosition) {
         return worldPosition.x >= minCorner.x && worldPosition.x < maxCorner.x &&
                 worldPosition.y >= minCorner.y && worldPosition.y < maxCorner.y &&
@@ -88,20 +85,43 @@ public class Chunk {
         return new Vector3f(maxCorner);
     }
 
-    // Static method to update chunk dimensions from Config
+    public CustomAABB getAABB() { // Getter for the chunk's AABB
+        return boundingBox;
+    }
+
+    // Mesh management
+    public ChunkMesh getOrCreateMesh() {
+        if (chunkMesh == null) { // Should be initialized in constructor, but as a safeguard
+            chunkMesh = new ChunkMesh();
+            needsMeshRebuild = true; // Force build if it was null
+        }
+        if (needsMeshRebuild || !chunkMesh.isInitialized()) {
+            if(chunkMesh.isInitialized()) chunkMesh.cleanup(); // Clean old mesh if rebuilding
+            List<Block> currentBlocks = getModifiableBlocks(); // Get the actual list for building
+            if (!currentBlocks.isEmpty()) {
+                // Pass blocks and chunk's world origin (minCorner)
+                chunkMesh.buildMesh(currentBlocks, this.minCorner);
+            } else {
+                chunkMesh.cleanup(); // Ensure no VAO if no blocks
+            }
+            needsMeshRebuild = false;
+        }
+        return chunkMesh;
+    }
+
+    public void cleanupMesh() {
+        if (chunkMesh != null && chunkMesh.isInitialized()) {
+            chunkMesh.cleanup();
+        }
+    }
+
+
     public static void setChunkDimensions(int sizeX, int sizeY, int sizeZ) {
         CHUNK_SIZE_X = sizeX;
         CHUNK_SIZE_Y = sizeY;
         CHUNK_SIZE_Z = sizeZ;
     }
 
-    /**
-     * Helper method to calculate the ChunkId for a given world position.
-     * @param worldX World X coordinate.
-     * @param worldY World Y coordinate.
-     * @param worldZ World Z coordinate.
-     * @return The ChunkId.
-     */
     public static ChunkId getChunkIdAtWorldPosition(float worldX, float worldY, float worldZ) {
         int chunkX = (int) Math.floor(worldX / CHUNK_SIZE_X);
         int chunkY = (int) Math.floor(worldY / CHUNK_SIZE_Y);
@@ -113,4 +133,3 @@ public class Chunk {
         return getChunkIdAtWorldPosition(worldPosition.x, worldPosition.y, worldPosition.z);
     }
 }
-

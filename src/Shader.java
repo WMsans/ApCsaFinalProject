@@ -77,33 +77,37 @@ public class Shader {
     public void createUniform(String uniformName) throws Exception {
         int uniformLocation = GL20.glGetUniformLocation(programId, uniformName);
         if (uniformLocation < 0) {
+            // It's not an error if a uniform is not found, it might be optimized out by the GLSL compiler
+            // if it's not used. However, for critical uniforms, you might want to throw an exception.
             System.err.println("Could not find uniform (it might be unused/optimized out): " + uniformName);
-            // Storing -1 allows us to check later and avoid errors if a uniform is optimized out
-            // but still allow the program to run if the uniform is not critical or used in all conditions.
         }
         uniforms.put(uniformName, uniformLocation);
     }
 
     public void setUniform(String uniformName, Matrix4f value) {
         Integer location = uniforms.get(uniformName);
-        if (location == null || location < 0) return;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            FloatBuffer fb = stack.mallocFloat(16);
-            value.get(fb);
-            GL20.glUniformMatrix4fv(location, false, fb);
+        // Only try to set the uniform if its location was found (not -1)
+        if (location != null && location >= 0) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                FloatBuffer fb = stack.mallocFloat(16);
+                value.get(fb);
+                GL20.glUniformMatrix4fv(location, false, fb);
+            }
         }
     }
 
     public void setUniform(String uniformName, Vector3f value) {
         Integer location = uniforms.get(uniformName);
-        if (location == null || location < 0) return;
-        GL20.glUniform3f(location, value.x, value.y, value.z);
+        if (location != null && location >= 0) {
+            GL20.glUniform3f(location, value.x, value.y, value.z);
+        }
     }
 
     public void setUniform(String uniformName, float value) {
         Integer location = uniforms.get(uniformName);
-        if (location == null || location < 0) return;
-        GL20.glUniform1f(location, value);
+        if (location != null && location >= 0) {
+            GL20.glUniform1f(location, value);
+        }
     }
 
     public void bind() {
@@ -123,10 +127,16 @@ public class Shader {
 
     public static String loadResource(String fileName) throws Exception {
         String result;
-        try (InputStream in = Shader.class.getResourceAsStream(fileName); // Use getResourceAsStream for classpath
+        // Ensure the path starts with a '/' to indicate it's an absolute path in the classpath
+        if (!fileName.startsWith("/")) {
+            fileName = "/" + fileName;
+        }
+        try (InputStream in = Shader.class.getResourceAsStream(fileName);
              BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
             if (in == null) {
-                throw new Exception("Cannot find resource: " + fileName + ". Make sure it's in the classpath, e.g., src/shaders/" + fileName);
+                throw new Exception("Cannot find resource: " + fileName +
+                        ". Make sure it's in the classpath (e.g., under a 'resources' folder like 'resources/shaders" + fileName + "') " +
+                        "and the resources folder is marked as such in your IDE.");
             }
             result = reader.lines().collect(Collectors.joining("\n"));
         }
