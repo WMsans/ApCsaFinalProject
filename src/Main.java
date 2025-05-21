@@ -53,22 +53,18 @@ public class Main implements Runnable {
         input = new Input(window.getWindowHandle());
 
         glfwMakeContextCurrent(window.getWindowHandle());
-        glfwSwapInterval(1);
+        glfwSwapInterval(1); // Enable v-sync
         glfwShowWindow(window.getWindowHandle());
         GL.createCapabilities();
 
-        glClearColor(0.1f, 0.1f, 0.15f, 0.0f);
+        glClearColor(0.1f, 0.1f, 0.15f, 0.0f); // Background color
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        // Initialize terrain with desired initial block dimensions and config
-        // The terrain generator will now use chunk sizes from config.
-        // For example, 64x16x64 blocks total for initial generation.
         terrain = new Terrain(64, config.getChunkSizeY() * 2, 64, config);
 
-
-        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 20.0f, 0); // Start above generated terrain
+        Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 20.0f, 0);
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
 
         renderer = new Renderer(playerEntity.getCamera(), config);
@@ -79,26 +75,27 @@ public class Main implements Runnable {
         float deltaTime;
 
         while (!window.shouldClose()) {
-            float currentTime = (float) glfwGetTime();
+            float currentTime = (float) glfwGetTime(); // Get current time for game logic
             deltaTime = currentTime - lastTime;
             lastTime = currentTime;
 
+            // Cap delta time to prevent physics issues if game hangs
             if (deltaTime > 0.1f) deltaTime = 0.1f;
-            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f;
+            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f; // Avoid zero or negative delta
 
-            input.pollEvents();
+            input.pollEvents(); // Update input states (e.g., for isKeyPressed)
 
             if (input.isKeyPressed(GLFW_KEY_ESCAPE)) {
                 glfwSetWindowShouldClose(window.getWindowHandle(), true);
             }
 
-            playerEntity.update(deltaTime);
+            // Pass deltaTime and currentTime to player update
+            playerEntity.update(deltaTime, currentTime);
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            // Pass player position to renderer for determining which chunks to render
             renderer.renderTerrain(terrain, playerEntity.getPosition());
             window.swapBuffers();
-            glfwPollEvents();
+            glfwPollEvents(); // Process OS events
         }
     }
 

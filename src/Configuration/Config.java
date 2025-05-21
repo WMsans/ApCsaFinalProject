@@ -20,6 +20,7 @@ public class Config {
     public float jumpEndEarlyGravityModifier;
     public float coyoteTime;
     public float jumpBufferTime;
+    public float flySpeed; // New
 
     // Lighting Parameters
     public float gamma;
@@ -30,6 +31,9 @@ public class Config {
     public int chunkSizeY;
     public int chunkSizeZ;
     public int renderDistanceInChunks;
+
+    // Debug Parameters
+    public boolean flyMode;
 
     public Config(String fileName) {
         properties = new Properties();
@@ -69,12 +73,16 @@ public class Config {
         properties.setProperty("player.jumpEndEarlyGravityModifier", "2.5");
         properties.setProperty("player.coyoteTime", "0.1");
         properties.setProperty("player.jumpBufferTime", "0.1");
+        properties.setProperty("player.flySpeed", "12.0"); // New default
 
         // World/Chunk defaults
         properties.setProperty("world.chunkSizeX", "16");
         properties.setProperty("world.chunkSizeY", "16");
         properties.setProperty("world.chunkSizeZ", "16");
         properties.setProperty("world.renderDistanceInChunks", "8");
+
+        // Debug defaults
+        properties.setProperty("debug.flyMode", "0");
     }
 
     private void loadProperties() {
@@ -96,15 +104,19 @@ public class Config {
         this.jumpEndEarlyGravityModifier = Float.parseFloat(properties.getProperty("player.jumpEndEarlyGravityModifier"));
         this.coyoteTime = Float.parseFloat(properties.getProperty("player.coyoteTime"));
         this.jumpBufferTime = Float.parseFloat(properties.getProperty("player.jumpBufferTime"));
+        this.flySpeed = Float.parseFloat(properties.getProperty("player.flySpeed", "12.0")); // New, with default fallback
 
         // World/Chunk
         this.chunkSizeX = Integer.parseInt(properties.getProperty("world.chunkSizeX"));
         this.chunkSizeY = Integer.parseInt(properties.getProperty("world.chunkSizeY"));
         this.chunkSizeZ = Integer.parseInt(properties.getProperty("world.chunkSizeZ"));
         this.renderDistanceInChunks = Integer.parseInt(properties.getProperty("world.renderDistanceInChunks"));
+
+        // Debug
+        this.flyMode = Integer.parseInt(properties.getProperty("debug.flyMode")) >= 1;
     }
 
-    // Getters (optional, direct access is also fine for these public fields)
+    // Getters
     public float getGamma() { return gamma; }
     public Vector3f getLightPosition() { return lightPosition; }
     public float getMaxSpeed() { return maxSpeed; }
@@ -117,8 +129,10 @@ public class Config {
     public float getJumpEndEarlyGravityModifier() { return jumpEndEarlyGravityModifier; }
     public float getCoyoteTime() { return coyoteTime; }
     public float getJumpBufferTime() { return jumpBufferTime; }
+    public float getFlySpeed() { return flySpeed; }
     public int getChunkSizeX() { return chunkSizeX; }
     public int getChunkSizeY() { return chunkSizeY; }
     public int getChunkSizeZ() { return chunkSizeZ; }
     public int getRenderDistanceInChunks() { return renderDistanceInChunks; }
+    public boolean isDebugFlyModeEnabled() { return flyMode; }
 }
