@@ -1,7 +1,8 @@
 package World.Entities;
 
 import Inventory.*;
-import World.Terrain;
+import World.Terrain.BaseTerrainGenerator;
+import World.Terrain.NetherTerrain;
 import org.joml.Vector3f;
 
 public abstract class LivingEntity extends Entity {
@@ -11,7 +12,7 @@ public abstract class LivingEntity extends Entity {
     // Basic line of sight parameters
     protected float sightRange = 16.0f; // Max distance to see other entities
 
-    public LivingEntity(Terrain worldTerrain, Vector3f initialPosition, Vector3f dimensions, float maxHealth) {
+    public LivingEntity(BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Vector3f dimensions, float maxHealth) {
         super(worldTerrain, initialPosition, dimensions);
         this.maxHealth = maxHealth;
         this.health = maxHealth;

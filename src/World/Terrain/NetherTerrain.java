@@ -1,20 +1,18 @@
-package World;
+package World.Terrain;
 
 import Configuration.Config;
-import World.Chunk.*;
+import World.Block;
+import World.Chunk.Chunk;
+import World.Chunk.ChunkId;
+import World.FastNoiseLite;
 import org.joml.Vector3f;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.Random;
+import java.util.Random; // Already imported
 
-public class Terrain {
-    private final Map<ChunkId, Chunk> chunks;
-    private final Config config;
-    private final Random random = new Random();
+public class NetherTerrain extends BaseTerrainGenerator {
+    private final Random random = new Random(); // Keep if used by this specific generator
 
     private final FastNoiseLite noiseGen_BaseHeight;
     private final FastNoiseLite noiseGen_3DDensity;
@@ -34,11 +32,10 @@ public class Terrain {
     private static final float ISLAND_THICKNESS_VARIATION = 15.0f;
     private static final float MIN_SPIRE_BASE_ALTITUDE = 50.0f;
     private static final float MAX_SPIRE_HEIGHT_ABOVE_BASE = 150.0f;
-    private static final float SPIRE_PLACEMENT_THRESHOLD = 0.75f; // Note: This is for Distance2, so lower is "more likely"
+    // SPIRE_PLACEMENT_THRESHOLD is effectively actualSpirePlacementThreshold now
     private static final float SPIRE_DENSITY_THRESHOLD = 0.4f;
     private static final float SPIRE_RADIUS_FACTOR = 0.15f;
 
-    // New color palettes
     private static final Vector3f[] TERRAIN_COLORS = {
             new Vector3f(0.545f, 0.118f, 1.0f), // #8c1eff
             new Vector3f(0.949f, 0.133f, 1.0f), // #f222ff
@@ -49,15 +46,13 @@ public class Terrain {
             new Vector3f(1.0f, 0.565f, 0.122f), // #ff901f
             new Vector3f(1.0f, 0.827f, 0.098f)  // #ffd319
     };
-    private static final int COLOR_TRANSITION_RANGE_Y = 10; // How many Y levels for a full color transition cycle
+    private static final int COLOR_TRANSITION_RANGE_Y = 10;
 
+    public NetherTerrain(Config config) {
+        super(config); // Call to superclass constructor
+        // Note: 'chunks' and 'config' are initialized in BaseTerrainGenerator
 
-    public Terrain(Config config) {
-        this.chunks = new HashMap<>();
-        this.config = config;
-        Chunk.setChunkDimensions(config.getChunkSizeX(), config.getChunkSizeY(), config.getChunkSizeZ());
-
-        int worldSeed = 1337;
+        int worldSeed = 1337; // Or get from config if you prefer
 
         noiseGen_BaseHeight = new FastNoiseLite(worldSeed);
         noiseGen_BaseHeight.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
@@ -90,11 +85,10 @@ public class Terrain {
 
         noiseGen_SpirePlacement = new FastNoiseLite(worldSeed + 4);
         noiseGen_SpirePlacement.SetNoiseType(FastNoiseLite.NoiseType.Cellular);
-        noiseGen_SpirePlacement.SetFrequency(0.008f); // Lower frequency for sparser spires
+        noiseGen_SpirePlacement.SetFrequency(0.008f);
         noiseGen_SpirePlacement.SetCellularDistanceFunction(FastNoiseLite.CellularDistanceFunction.EuclideanSq);
-        noiseGen_SpirePlacement.SetCellularReturnType(FastNoiseLite.CellularReturnType.Distance2); // Distance to nearest point (smaller is closer)
+        noiseGen_SpirePlacement.SetCellularReturnType(FastNoiseLite.CellularReturnType.Distance2);
         noiseGen_SpirePlacement.SetCellularJitter(0.6f);
-
 
         noiseGen_SpireShape = new FastNoiseLite(worldSeed + 5);
         noiseGen_SpireShape.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
@@ -102,7 +96,7 @@ public class Terrain {
     }
 
     private Vector3f lerpColor(Vector3f color1, Vector3f color2, float t) {
-        t = Math.max(0, Math.min(1, t)); // Clamp t to [0, 1]
+        t = Math.max(0, Math.min(1, t));
         float r = color1.x * (1 - t) + color2.x * t;
         float g = color1.y * (1 - t) + color2.y * t;
         float b = color1.z * (1 - t) + color2.z * t;
@@ -110,23 +104,21 @@ public class Terrain {
     }
 
     private Vector3f getInterpolatedColor(float worldY, Vector3f[] palette) {
-        // Determine the base color index and the transition progress
         float yProgress = (worldY / COLOR_TRANSITION_RANGE_Y);
         int colorIndex1 = (int) Math.floor(yProgress) % palette.length;
         int colorIndex2 = (colorIndex1 + 1) % palette.length;
-        float t = yProgress - (float)Math.floor(yProgress); // Transition factor between colorIndex1 and colorIndex2
-
+        float t = yProgress - (float)Math.floor(yProgress);
         return lerpColor(palette[colorIndex1], palette[colorIndex2], t);
     }
 
-
-    private void generateChunk(ChunkId chunkId) {
-        Chunk newChunk = new Chunk(chunkId); // This now initializes its own AABB and an empty ChunkMesh
+    @Override
+    protected void generateChunk(ChunkId chunkId) {
+        Chunk newChunk = new Chunk(chunkId);
         float worldChunkXBase = (float)chunkId.x * Chunk.CHUNK_SIZE_X;
         float worldChunkYBase = (float)chunkId.y * Chunk.CHUNK_SIZE_Y;
         float worldChunkZBase = (float)chunkId.z * Chunk.CHUNK_SIZE_Z;
 
-        List<Block> tempBlockList = new ArrayList<>(); // Generate blocks into a temporary list first
+        List<Block> tempBlockList = new ArrayList<>();
 
         for (int lx = 0; lx < Chunk.CHUNK_SIZE_X; lx++) {
             for (int lz = 0; lz < Chunk.CHUNK_SIZE_Z; lz++) {
@@ -189,17 +181,13 @@ public class Terrain {
                         }
                     }
 
-
                     if (placeBlock) {
                         if (isIslandBlock) {
                             color = getInterpolatedColor(worldY, ISLAND_COLORS);
                         } else if (isSpireBlock) {
-                            // Spire color logic - could also use a palette or keep the existing one
-                            color = new Vector3f(0.4f, 0.4f, 0.8f); // Default spire color
-                            // Example of pattern for spires, if desired:
-                            // color = getInterpolatedColor(worldY, new Vector3f[]{new Vector3f(0.4f, 0.4f, 0.8f), new Vector3f(0.6f, 0.6f, 0.9f)});
+                            color = new Vector3f(0.4f, 0.4f, 0.8f);
                         }
-                        else { // Regular terrain
+                        else {
                             color = getInterpolatedColor(worldY, TERRAIN_COLORS);
                         }
                         tempBlockList.add(new Block(worldX, worldY, worldZ, color));
@@ -210,131 +198,10 @@ public class Terrain {
         for(Block b : tempBlockList) {
             newChunk.addBlock(b);
         }
-        newChunk.getOrCreateMesh();
-        chunks.put(chunkId, newChunk);
+        newChunk.getOrCreateMesh(); // Ensure mesh is built or marked for rebuild
+        chunks.put(chunkId, newChunk); // Add to the map in the superclass
     }
 
-    public Chunk getChunk(ChunkId id) {
-        if (!chunks.containsKey(id)) {
-            generateChunk(id);
-        }
-        return chunks.get(id);
-    }
-
-    public Chunk getOrCreateChunk(ChunkId id) {
-        return getChunk(id);
-    }
-
-    public Chunk getChunkAtWorldPosition(Vector3f worldPosition) {
-        ChunkId id = Chunk.getChunkIdAtWorldPosition(worldPosition);
-        return getChunk(id);
-    }
-
-    public Chunk getOrCreateChunkAtWorldPosition(Vector3f worldPosition) {
-        ChunkId id = Chunk.getChunkIdAtWorldPosition(worldPosition);
-        return getChunk(id);
-    }
-
-    public void addBlock(Block block) {
-        if (block == null) return;
-        ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(block.getPosition());
-        Chunk chunk = getChunk(chunkId);
-        chunk.addBlock(block);
-    }
-
-    public boolean removeBlock(Block blockToRemove) {
-        if (blockToRemove == null) return false;
-        ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(blockToRemove.getPosition());
-        Chunk chunk = getChunk(chunkId);
-        if (chunk != null) {
-            boolean removed = chunk.removeBlock(blockToRemove);
-            return removed;
-        }
-        return false;
-    }
-
-    public boolean removeBlockAt(Vector3f worldPosition) {
-        ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(worldPosition);
-        Chunk chunk = getChunk(chunkId);
-        if (chunk != null) {
-            Block toRemove = null;
-            for (Block b : chunk.getModifiableBlocks()) {
-                if (b.getPosition().distanceSquared(worldPosition) < 0.001f) {
-                    toRemove = b;
-                    break;
-                }
-            }
-            if (toRemove != null) {
-                return chunk.removeBlock(toRemove);
-            }
-        }
-        return false;
-    }
-
-    public boolean isBlockAt(Vector3f worldPosition) {
-        ChunkId chunkId = Chunk.getChunkIdAtWorldPosition(worldPosition);
-        Chunk chunk = getChunk(chunkId);
-        if (chunk != null) {
-            for (Block block : chunk.getBlocks()) {
-                if (block.getPosition().distanceSquared(worldPosition) < 0.001f) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    public List<Block> getBlocksForCollision(Vector3f entityPosition, Vector3f entityDimensions) {
-        List<Block> relevantBlocks = new ArrayList<>();
-        Set<ChunkId> checkedChunkIds = new HashSet<>();
-
-        Vector3f halfDim = new Vector3f(entityDimensions).mul(0.5f);
-        Vector3f entityMinCorner = new Vector3f(entityPosition).sub(halfDim);
-        Vector3f entityMaxCorner = new Vector3f(entityPosition).add(halfDim);
-
-        ChunkId minChunkId = Chunk.getChunkIdAtWorldPosition(entityMinCorner);
-        ChunkId maxChunkId = Chunk.getChunkIdAtWorldPosition(entityMaxCorner);
-
-        for (int cx = minChunkId.x - 1; cx <= maxChunkId.x + 1; cx++) {
-            for (int cy = minChunkId.y - 1; cy <= maxChunkId.y + 1; cy++) {
-                for (int cz = minChunkId.z - 1; cz <= maxChunkId.z + 1; cz++) {
-                    ChunkId currentChunkId = new ChunkId(cx, cy, cz);
-                    if (checkedChunkIds.add(currentChunkId)) {
-                        Chunk chunk = getChunk(currentChunkId);
-                        if (chunk != null) {
-                            relevantBlocks.addAll(chunk.getBlocks());
-                        }
-                    }
-                }
-            }
-        }
-        return relevantBlocks;
-    }
-
-    public List<Block> getBlocksInRadius(ChunkId centerChunkId, int radiusInChunks) {
-        List<Block> blocksInRadius = new ArrayList<>();
-        for (int dx = -radiusInChunks; dx <= radiusInChunks; dx++) {
-            for (int dy = -radiusInChunks; dy <= radiusInChunks; dy++) {
-                for (int dz = -radiusInChunks; dz <= radiusInChunks; dz++) {
-                    ChunkId currentId = new ChunkId(centerChunkId.x + dx, centerChunkId.y + dy, centerChunkId.z + dz);
-                    Chunk chunk = getChunk(currentId);
-                    if (chunk != null) {
-                        blocksInRadius.addAll(chunk.getBlocks());
-                    }
-                }
-            }
-        }
-        return blocksInRadius;
-    }
-
-    public List<Chunk> getAllLoadedChunks() {
-        return new ArrayList<>(chunks.values());
-    }
-
-    public void cleanup() {
-        for (Chunk chunk : chunks.values()) {
-            chunk.cleanupMesh();
-        }
-        chunks.clear();
-    }
+    // Other methods like getChunk, addBlock, removeBlock, etc., are inherited from BaseTerrainGenerator.
+    // Specific cleanup for NetherTerrain if any (besides what BaseTerrainGenerator handles) can be overridden.
 }

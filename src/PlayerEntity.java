@@ -3,6 +3,8 @@ import World.*;
 import World.Chunk.*;
 import World.Entities.Entity;
 import World.Entities.LivingEntity;
+import World.Terrain.BaseTerrainGenerator;
+import World.Terrain.NetherTerrain;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import java.util.Random;
@@ -40,7 +42,7 @@ public class PlayerEntity extends LivingEntity {
     private final float DOUBLE_SPACE_PRESS_INTERVAL = 0.3f; // Max interval for double-tap in seconds
 
 
-    public PlayerEntity(Input input, Window window, Terrain worldTerrain, Vector3f initialPosition, Config config) {
+    public PlayerEntity(Input input, Window window, BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Config config) {
         super(worldTerrain, initialPosition, new Vector3f(0.6f, 1.8f, 0.6f), 20.0f); // Dimensions, health
         this.input = input;
         this.window = window;
@@ -87,6 +89,8 @@ public class PlayerEntity extends LivingEntity {
         Vector3f currentEyePosition = new Vector3f(this.position).add(0, getEyeHeight(), 0);
         this.camera.setPosition(currentEyePosition);
         this.camera.setYaw(this.yaw); // Sync camera yaw with entity's body yaw
+
+        System.out.println(position);
     }
 
     @Override

@@ -1,10 +1,9 @@
-import World.Terrain;
+import World.Terrain.*;
 import Input.*;
 import Configuration.*;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
-import org.lwjgl.system.*;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -15,7 +14,7 @@ public class Main implements Runnable {
 
     private Window window;
     private Renderer renderer;
-    private Terrain terrain;
+    private BaseTerrainGenerator terrain;
     private Input input;
     private PlayerEntity playerEntity;
     private Config config;
@@ -23,6 +22,23 @@ public class Main implements Runnable {
     private final String windowTitle = "LWJGL Minecraft Prototype - Chunk System";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
+    private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.SIMPLE;
+
+    private enum TerrainType {
+        NETHER,
+        SIMPLE
+    }
+
+    private BaseTerrainGenerator GetTerrainGenerator() {
+        switch (TERRAIN_GENERATOR_TYPE) {
+            case NETHER:
+                return new NetherTerrain(config);
+            case SIMPLE:
+                return new SimpleTerrain(config);
+            default:
+                throw new IllegalStateException("Unknown terrain generator type selected.");
+        }
+    }
 
     public static void main(String[] args) {
         new Main().run();
@@ -62,7 +78,7 @@ public class Main implements Runnable {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = new Terrain(config);
+        terrain = GetTerrainGenerator();
 
         Vector3f playerStartPosition = new Vector3f(0, config.getChunkSizeY() + 100.0f, 0);
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);

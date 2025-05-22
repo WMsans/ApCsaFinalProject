@@ -3,8 +3,8 @@ package World.Entities;
 import Inventory.Hand;
 import Physics.CustomAABB;
 import World.Block;
-import World.Terrain; // Will use Terrain's new methods
-import World.Chunk.*; // For ChunkId calculation if needed directly
+import World.Terrain.BaseTerrainGenerator;
+import World.Terrain.NetherTerrain; // Will use Terrain's new methods
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.util.UUID;
@@ -19,7 +19,7 @@ public abstract class Entity {
 
     protected boolean isValid;
     protected boolean isOnGround;
-    protected Terrain worldTerrain; // This is our world/chunk manager
+    protected BaseTerrainGenerator worldTerrain; // This is our world/chunk manager
 
     protected CustomAABB localBoundingBox; // AABB relative to entity's origin (position)
 
@@ -27,7 +27,7 @@ public abstract class Entity {
     protected static final float DEFAULT_TERMINAL_VELOCITY = 50.0f;
     protected static final float COLLISION_SKIN_WIDTH = 0.005f;
 
-    public Entity(Terrain worldTerrain, Vector3f initialPosition, Vector3f dimensions) {
+    public Entity(BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Vector3f dimensions) {
         this.id = UUID.randomUUID();
         this.worldTerrain = worldTerrain;
         this.position = new Vector3f(initialPosition);

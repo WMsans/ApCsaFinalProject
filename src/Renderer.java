@@ -1,11 +1,9 @@
 import Configuration.Config;
-import World.Block;
-import World.Terrain;
+import World.Terrain.BaseTerrainGenerator;
+import World.Terrain.NetherTerrain;
 import World.Chunk.*;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.lwjgl.opengl.GL11;
-import java.util.List;
 
 public class Renderer {
 
@@ -47,7 +45,7 @@ public class Renderer {
         shader.createUniform("viewPos");
     }
 
-    public void renderTerrain(Terrain terrain, Vector3f playerPosition) {
+    public void renderTerrain(BaseTerrainGenerator terrain, Vector3f playerPosition) {
         camera.updateFrustum(); // Update frustum planes once per frame
 
         shader.bind();
