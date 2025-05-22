@@ -46,6 +46,10 @@ public class PlayerEntity extends LivingEntity {
 
     private float lastReleaseGameTime = -1.0f;
 
+    private float currentCameraRoll = 0.0f;
+    private final float maxCameraRoll = 30.0f;
+    private final float cameraRollSpeed = 15.0f;
+
     // Hook related fields
     private enum HookState {
         READY,      // Can shoot a new hook
@@ -118,6 +122,43 @@ public class PlayerEntity extends LivingEntity {
         }
 
         super.update(deltaTime, currentTime); // Entity.update -> applyGravity, moveEntity, updateLogic
+
+        // Calculate and apply camera roll if enabled and player is in air and moving
+        if (config.isEnablePlayerAirRoll() && !isOnGround && velocity.lengthSquared() > 100f) {
+            Vector3f playerVelocityXZ = new Vector3f(velocity.x, 0, velocity.z);
+            if (playerVelocityXZ.lengthSquared() > 0.01f) { // Only roll if there's horizontal movement
+                playerVelocityXZ.normalize();
+
+                Vector3f cameraRightXZ = camera.getRightDirection(false).normalize(); // Get XZ right vector of camera
+
+                // Determine if player is moving left or right relative to camera's facing direction
+                float relativeMovementDot = playerVelocityXZ.dot(cameraRightXZ);
+                // positive dot means moving right, negative means moving left
+
+                float targetRoll = -relativeMovementDot * maxCameraRoll; // Negative because right movement = clockwise roll
+
+                // Smoothly interpolate to the target roll
+                if (currentCameraRoll < targetRoll) {
+                    currentCameraRoll += cameraRollSpeed * deltaTime;
+                    if (currentCameraRoll > targetRoll) currentCameraRoll = targetRoll;
+                } else if (currentCameraRoll > targetRoll) {
+                    currentCameraRoll -= cameraRollSpeed * deltaTime;
+                    if (currentCameraRoll < targetRoll) currentCameraRoll = targetRoll;
+                }
+            }
+        } else {
+            // Smoothly return to zero roll if on ground or not moving
+            if (currentCameraRoll > 0.01f) {
+                currentCameraRoll -= cameraRollSpeed * deltaTime;
+                if (currentCameraRoll < 0) currentCameraRoll = 0;
+            } else if (currentCameraRoll < -0.01f) {
+                currentCameraRoll += cameraRollSpeed * deltaTime;
+                if (currentCameraRoll > 0) currentCameraRoll = 0;
+            } else {
+                currentCameraRoll = 0;
+            }
+        }
+        this.camera.setRoll(currentCameraRoll);
 
         // Stuck check and recovery
         if (isStuck()) {
@@ -401,7 +442,7 @@ public class PlayerEntity extends LivingEntity {
 
         if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED && !isFlying) {
             Vector3f gasForceDirection = camera.getForwardDirection(true);
-            addVelocity(gasForceDirection.mul(GAS_FORCE_MAGNITUDE * deltaTime).add(0, GAS_FORCE_MAGNITUDE * deltaTime, 0));
+            addVelocity(gasForceDirection.mul(GAS_FORCE_MAGNITUDE * deltaTime).add(0, GAS_FORCE_MAGNITUDE * deltaTime * 0.8f, 0));
         }
 
         if (jumpBufferTimer > 0 && !(input.isKeyDown(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying)) {

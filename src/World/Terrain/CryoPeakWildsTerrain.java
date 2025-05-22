@@ -19,7 +19,7 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
 
     // Constants for new dramatic height calculation
     private static final float FLAT_LOW_LEVEL = 10.0f;
-    private static final float PEAK_HIGH_LEVEL = 40.0f;
+    private static final float PEAK_HIGH_LEVEL = 100.0f;
     private static final float DRAMATIC_THRESHOLD_LOW = 0f;
     private static final float DRAMATIC_THRESHOLD_HIGH = 0.3f;
     private static final float LOW_VARIATION_AMP = 5.0f;
@@ -28,7 +28,7 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
 
     private static final float PILLAR_THRESHOLD = 0.6f; // Noise value above which pillars generate
     private static final float PILLAR_MIN_HEIGHT = 15.0f;
-    private static final float PILLAR_AMPLITUDE = 150.0f; // Max additional height for pillars
+    private static final float PILLAR_AMPLITUDE = 170.0f; // Max additional height for pillars
 
     // Color strategy from NetherTerrain
     private static final Vector3f[] TERRAIN_COLORS = {

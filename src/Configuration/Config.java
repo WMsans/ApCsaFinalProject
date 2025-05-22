@@ -21,6 +21,7 @@ public class Config {
     public float coyoteTime;
     public float jumpBufferTime;
     public float flySpeed;
+    public boolean enablePlayerAirRoll;
 
     // Lighting Parameters
     public float gamma;
@@ -71,6 +72,7 @@ public class Config {
         properties.setProperty("player.coyoteTime", "0.1");
         properties.setProperty("player.jumpBufferTime", "0.1");
         properties.setProperty("player.flySpeed", "12.0");
+        properties.setProperty("player.enablePlayerAirRoll", "1");
 
         // World/Chunk defaults
         properties.setProperty("world.chunkSizeX", "16");
@@ -98,6 +100,7 @@ public class Config {
         this.coyoteTime = Float.parseFloat(properties.getProperty("player.coyoteTime"));
         this.jumpBufferTime = Float.parseFloat(properties.getProperty("player.jumpBufferTime"));
         this.flySpeed = Float.parseFloat(properties.getProperty("player.flySpeed", "12.0"));
+        this.enablePlayerAirRoll = Integer.parseInt(properties.getProperty("player.enablePlayerAirRoll")) >= 1;
 
         // World/Chunk
         this.chunkSizeX = Integer.parseInt(properties.getProperty("world.chunkSizeX"));
@@ -123,6 +126,7 @@ public class Config {
     public float getCoyoteTime() { return coyoteTime; }
     public float getJumpBufferTime() { return jumpBufferTime; }
     public float getFlySpeed() { return flySpeed; }
+    public boolean isEnablePlayerAirRoll() { return enablePlayerAirRoll; }
     public int getChunkSizeX() { return chunkSizeX; }
     public int getChunkSizeY() { return chunkSizeY; }
     public int getChunkSizeZ() { return chunkSizeZ; }

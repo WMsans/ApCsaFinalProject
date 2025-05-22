@@ -12,10 +12,13 @@ public class Camera {
     private Window window;
     private Frustum frustum; // New field
 
+    private float roll;
+
     public Camera(Vector3f initialPosition, Window window) {
         this.position = new Vector3f(initialPosition);
         this.pitch = 0.0f;
         this.yaw = -90.0f; // Initialize yaw to look along negative Z
+        this.roll = 0.0f;
         this.window = window;
         this.frustum = new Frustum(); // Initialize frustum
     }
@@ -26,6 +29,14 @@ public class Camera {
 
     public void setYaw(float yaw) {
         this.yaw = yaw;
+    }
+
+    public void setRoll(float roll) {
+        this.roll = roll;
+    }
+
+    public float getRoll() {
+        return roll;
     }
 
     public void rotatePitch(float deltaPitch) {
@@ -80,15 +91,29 @@ public class Camera {
 
     public Matrix4f getViewMatrix() {
         Vector3f direction = getForwardDirection(true);
-        Vector3f up = new Vector3f(0, 1, 0); // World up
-        // If looking straight up/down, the standard cross product for 'right' can become unstable.
-        // To derive a stable 'up' vector for the lookAt matrix:
-        // Calculate the actual 'right' vector.
-        // Then cross 'right' with 'forward' to get the camera's 'up'.
-        Vector3f actualRight = getRightDirection(true); // Use the robust 3D right
-        Vector3f cameraUp = new Vector3f(actualRight).cross(direction).normalize(); // camera's local up
-
         Vector3f lookAtTarget = new Vector3f(position).add(direction);
+
+        // Default world up
+        Vector3f worldUp = new Vector3f(0, 1, 0);
+
+        // Calculate the camera's right vector based on its current yaw and pitch
+        Vector3f right = new Vector3f();
+        direction.cross(worldUp, right); // Initial right vector
+        if (right.lengthSquared() < 0.001f) { // If looking straight up or down, forward is (0, +/-1, 0)
+            // Use a right vector based on yaw if forward is aligned with worldUp
+            right.set((float)Math.cos(Math.toRadians(yaw + 90)), 0, (float)Math.sin(Math.toRadians(yaw + 90)));
+        }
+        right.normalize();
+
+        // Calculate the camera's actual up vector by crossing forward and right
+        Vector3f cameraUp = new Vector3f();
+        right.cross(direction, cameraUp).normalize(); // cameraUp is now perpendicular to forward and right
+
+        // Apply roll: rotate the cameraUp vector around the direction (forward) vector
+        if (this.roll != 0.0f) {
+            cameraUp.rotateAxis((float)Math.toRadians(this.roll), direction.x, direction.y, direction.z).normalize();
+        }
+
         return new Matrix4f().lookAt(position, lookAtTarget, cameraUp);
     }
 
