@@ -16,7 +16,7 @@ public class Main implements Runnable {
 
     private Window window;
     private Renderer renderer;
-    private BaseTerrainGenerator terrain;
+    private BaseTerrainGenerator terrain; // Stays as BaseTerrainGenerator
     private Input input;
     private PlayerEntity playerEntity;
     private Config config;
@@ -24,7 +24,7 @@ public class Main implements Runnable {
     private final String windowTitle = "LWJGL Minecraft Prototype - Chunk System";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
-    private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.NETHER;
+    private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.SIMPLE;
 
     private enum TerrainType {
         NETHER,
@@ -35,11 +35,11 @@ public class Main implements Runnable {
     private BaseTerrainGenerator GetTerrainGenerator() {
         switch (TERRAIN_GENERATOR_TYPE) {
             case NETHER:
-                return new NetherTerrain(config); //
+                return new NetherTerrain(config);
             case SIMPLE:
-                return new SimpleTerrain(config); //
+                return new SimpleTerrain(config);
             case CRYO_PEAK_WILDS:
-                return new CryoPeakWildsTerrain(config); //
+                return new CryoPeakWildsTerrain(config);
             default:
                 throw new IllegalStateException("Unknown terrain generator type selected.");
         }
@@ -62,35 +62,34 @@ public class Main implements Runnable {
     }
 
     private Vector3f findSafeSpawnLocation() {
-        int renderDist = config.getRenderDistanceInChunks(); //
-        int chunkSearchRadius = Math.max(1, renderDist / 2); // Search a smaller radius for initial spawn
+        int renderDist = config.getRenderDistanceInChunks();
+        int chunkSearchRadius = Math.max(1, renderDist / 2);
         Vector3f bestSpawnPoint = null;
         float highestGroundFound = -Float.MAX_VALUE;
 
-        // Pre-generate chunks in the search radius around 0,0,0
+        System.out.println("Finding safe spawn: Pre-generating initial chunks synchronously...");
+        // Pre-generate chunks synchronously for spawn search
         for (int dx = -chunkSearchRadius; dx <= chunkSearchRadius; dx++) {
             for (int dz = -chunkSearchRadius; dz <= chunkSearchRadius; dz++) {
-                // Iterate relevant Y chunk layers. Start from a reasonable height.
-                // For simplicity, let's assume spawns are generally sought in y=0 to y=max chunk height.
-                // Adjust if your world has significant verticality at spawn.
-                for (int dy = config.getChunkSizeY() / Chunk.CHUNK_SIZE_Y + 2; dy >= -2; dy--) { // Search a few layers of chunks vertically
-                    terrain.getChunk(new ChunkId(dx, dy, dz)); //
+                for (int dy = config.getChunkSizeY() / Chunk.CHUNK_SIZE_Y + 2; dy >= -2; dy--) {
+                    terrain.getChunkSynchronous(new ChunkId(dx, dy, dz)); // Use synchronous getter
                 }
             }
         }
+        // Process any chunks that might have been queued by getChunkSynchronous (though it aims to be sync)
+        terrain.processCompletedChunks();
+        System.out.println("Initial chunks for spawn search processed.");
 
-        // Search for a spawn point
-        // Iterate X and Z world coordinates within the search radius
+
         for (int x = -chunkSearchRadius * Chunk.CHUNK_SIZE_X; x < chunkSearchRadius * Chunk.CHUNK_SIZE_X; x++) {
             for (int z = -chunkSearchRadius * Chunk.CHUNK_SIZE_Z; z < chunkSearchRadius * Chunk.CHUNK_SIZE_Z; z++) {
-                // Scan vertically downwards in this X,Z column
-                for (int y = config.getChunkSizeY() + Chunk.CHUNK_SIZE_Y * 2; y >= 0; y--) { // Start high enough
+                for (int y = config.getChunkSizeY() + Chunk.CHUNK_SIZE_Y * 2; y >= 0; y--) {
                     Vector3f currentPoint = new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
-                    if (terrain.isBlockAt(currentPoint)) { //
-                        // Found ground at 'currentPoint' (specifically, y is the top of the block)
+                    // isBlockAt will now only check fully loaded chunks
+                    if (terrain.isBlockAt(currentPoint)) {
                         if (y > highestGroundFound) {
                             boolean spaceClear = true;
-                            for (int i = 1; i <= 5; i++) { // Check 5 blocks above
+                            for (int i = 1; i <= 5; i++) {
                                 if (terrain.isBlockAt(new Vector3f(x + 0.5f, y + i + 0.5f, z + 0.5f))) {
                                     spaceClear = false;
                                     break;
@@ -101,7 +100,7 @@ public class Main implements Runnable {
                                 bestSpawnPoint = new Vector3f(x + 0.5f, y + 1.0f + 0.5f, z + 0.5f);
                             }
                         }
-                        break; // Move to next X,Z column
+                        break;
                     }
                 }
             }
@@ -112,7 +111,7 @@ public class Main implements Runnable {
             return new Vector3f(bestSpawnPoint.x, bestSpawnPoint.y, bestSpawnPoint.z);
         } else {
             System.err.println("Could not find a safe spawn location. Defaulting to high up.");
-            return new Vector3f(0, config.getChunkSizeY() + 100.0f, 0); // Fallback
+            return new Vector3f(0, config.getChunkSizeY() + 100.0f, 0);
         }
     }
 
@@ -123,68 +122,68 @@ public class Main implements Runnable {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        config = new Config("Configuration/config.properties"); //
+        config = new Config("Configuration/config.properties");
 
-        window = new Window(windowTitle, initialWidth, initialHeight); //
-        window.create(); //
-        input = new Input(window.getWindowHandle()); //
+        window = new Window(windowTitle, initialWidth, initialHeight);
+        window.create();
+        input = new Input(window.getWindowHandle());
 
-        glfwMakeContextCurrent(window.getWindowHandle()); //
-        glfwSwapInterval(1); // Enable v-sync //
-        glfwShowWindow(window.getWindowHandle()); //
+        glfwMakeContextCurrent(window.getWindowHandle());
+        glfwSwapInterval(1);
+        glfwShowWindow(window.getWindowHandle());
         GL.createCapabilities();
 
-        glClearColor(0.1f, 0.1f, 0.15f, 0.0f); // Background color
+        glClearColor(0.1f, 0.1f, 0.15f, 0.0f);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = GetTerrainGenerator();
+        terrain = GetTerrainGenerator(); // Terrain generator is now capable of async
 
-        //MODIFICATION START
         Vector3f playerStartPosition = findSafeSpawnLocation();
-        //MODIFICATION END
-        playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config); //
+        playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
 
-        renderer = new Renderer(playerEntity.getCamera(), config); //
+        renderer = new Renderer(playerEntity.getCamera(), config);
     }
 
     private void loop() {
         float lastTime = (float) glfwGetTime();
         float deltaTime;
 
-        while (!window.shouldClose()) { //
-            float currentTime = (float) glfwGetTime(); // Get current time for game logic
+        while (!window.shouldClose()) {
+            float currentTime = (float) glfwGetTime();
             deltaTime = currentTime - lastTime;
             lastTime = currentTime;
 
-            // Cap delta time to prevent physics issues if game hangs
             if (deltaTime > 0.1f) deltaTime = 0.1f;
-            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f; // Avoid zero or negative delta
+            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f;
 
-            input.pollEvents(); // Update input states (e.g., for isKeyPressed) //
+            input.pollEvents();
 
-            if (input.isKeyPressed(GLFW_KEY_ESCAPE)) { //
-                glfwSetWindowShouldClose(window.getWindowHandle(), true); //
+            if (input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+                glfwSetWindowShouldClose(window.getWindowHandle(), true);
             }
 
-            // Pass deltaTime and currentTime to player update
-            playerEntity.update(deltaTime, currentTime); //
+            playerEntity.update(deltaTime, currentTime);
+
+            // Process any chunks that finished generating in worker threads
+            terrain.processCompletedChunks();
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderer.renderTerrain(terrain, playerEntity.getPosition()); //
-            window.swapBuffers(); //
-            glfwPollEvents(); // Process OS events
+            // Renderer will handle cases where some chunks are not yet loaded
+            renderer.renderTerrain(terrain, playerEntity.getPosition());
+            window.swapBuffers();
+            glfwPollEvents();
         }
     }
 
     private void cleanup() {
-        if (renderer != null) renderer.cleanup(); //
-        if (terrain != null) terrain.cleanup(); //
+        if (renderer != null) renderer.cleanup();
+        if (terrain != null) terrain.cleanup(); // This will now also shutdown the ExecutorService
 
-        if (window != null && window.getWindowHandle() != NULL) { //
-            glfwFreeCallbacks(window.getWindowHandle()); //
-            glfwDestroyWindow(window.getWindowHandle()); //
+        if (window != null && window.getWindowHandle() != NULL) {
+            glfwFreeCallbacks(window.getWindowHandle());
+            glfwDestroyWindow(window.getWindowHandle());
         }
         glfwTerminate();
         GLFWErrorCallback callback = glfwSetErrorCallback(null);

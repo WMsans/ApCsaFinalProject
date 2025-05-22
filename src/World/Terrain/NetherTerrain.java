@@ -113,7 +113,7 @@ public class NetherTerrain extends BaseTerrainGenerator {
     }
 
     @Override
-    protected void generateChunk(ChunkId chunkId) {
+    protected Chunk generateChunkData(ChunkId chunkId) {
         Chunk newChunk = new Chunk(chunkId);
         float worldChunkXBase = (float)chunkId.x * Chunk.CHUNK_SIZE_X;
         float worldChunkYBase = (float)chunkId.y * Chunk.CHUNK_SIZE_Y;
@@ -199,8 +199,7 @@ public class NetherTerrain extends BaseTerrainGenerator {
         for(Block b : tempBlockList) {
             newChunk.addBlock(b);
         }
-        newChunk.getOrCreateMesh(); // Ensure mesh is built or marked for rebuild
-        chunks.put(chunkId, newChunk); // Add to the map in the superclass
+        return newChunk;
     }
 
     // Other methods like getChunk, addBlock, removeBlock, etc., are inherited from BaseTerrainGenerator.

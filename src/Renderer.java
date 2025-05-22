@@ -1,6 +1,5 @@
 import Configuration.Config;
 import World.Terrain.BaseTerrainGenerator;
-import World.Terrain.NetherTerrain;
 import World.Chunk.*;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -10,19 +9,14 @@ public class Renderer {
     private Shader shader;
     private Camera camera;
     private Config config;
-
     private float gammaValue;
-
-    // Cube mesh data and IDs are removed, as this is now handled by ChunkMesh
 
     public Renderer(Camera camera, Config config) {
         this.camera = camera;
         this.config = config;
         this.gammaValue = config.getGamma();
-
         try {
             initShader();
-            // initCubeMesh(); // Removed
         } catch (Exception e) {
             System.err.println("Error initializing renderer:");
             e.printStackTrace();
@@ -35,7 +29,6 @@ public class Renderer {
         shader.createVertexShader(Shader.loadResource("/shaders/vertex.glsl"));
         shader.createFragmentShader(Shader.loadResource("/shaders/fragment.glsl"));
         shader.link();
-
         shader.createUniform("projectionMatrix");
         shader.createUniform("viewMatrix");
         shader.createUniform("modelMatrix");
@@ -46,47 +39,46 @@ public class Renderer {
     }
 
     public void renderTerrain(BaseTerrainGenerator terrain, Vector3f playerPosition) {
-        camera.updateFrustum(); // Update frustum planes once per frame
+        camera.updateFrustum();
 
         shader.bind();
         shader.setUniform("projectionMatrix", camera.getProjectionMatrix());
         shader.setUniform("viewMatrix", camera.getViewMatrix());
         shader.setUniform("lightPos", camera.getPosition());
-        shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f)); // White light
+        shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
         shader.setUniform("gamma", gammaValue);
         shader.setUniform("viewPos", camera.getPosition());
 
         ChunkId playerChunkId = Chunk.getChunkIdAtWorldPosition(playerPosition);
         int renderDist = config.getRenderDistanceInChunks();
-        int chunksRendered = 0;
+        int chunksRenderedThisFrame = 0;
 
         for (int dx = -renderDist; dx <= renderDist; dx++) {
-            for (int dy = -renderDist; dy <= renderDist; dy++) { // Iterate Y chunks as well
+            for (int dy = -renderDist; dy <= renderDist; dy++) {
                 for (int dz = -renderDist; dz <= renderDist; dz++) {
                     ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
-                    Chunk chunkToRender = terrain.getChunk(currentChunkId); // This will generate if not present
 
-                    if (chunkToRender != null) {
-                        // Frustum Culling for the entire chunk
+                    // terrain.getChunk() might return null if the chunk is still being generated
+                    Chunk chunkToRender = terrain.getChunk(currentChunkId);
+
+                    if (chunkToRender != null) { // Only proceed if chunk is loaded
                         if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
-                            continue; // Skip this chunk if it's outside the frustum
+                            continue;
                         }
 
-                        ChunkMesh mesh = chunkToRender.getOrCreateMesh();
+                        ChunkMesh mesh = chunkToRender.getOrCreateMesh(); // Mesh should be ready if chunk is in main map
                         if (mesh != null && mesh.isInitialized()) {
-                            // The model matrix will translate the chunk mesh (which is relative to chunk origin)
-                            // to its correct world position (the chunk's min corner).
                             Matrix4f modelMatrix = new Matrix4f().translate(chunkToRender.getMinCorner());
                             shader.setUniform("modelMatrix", modelMatrix);
-
                             mesh.render();
-                            chunksRendered++;
+                            chunksRenderedThisFrame++;
                         }
                     }
                 }
             }
         }
-        // System.out.println("Rendered Chunks: " + chunksRendered); // For debugging
+        // Optional: Log how many chunks were actually rendered vs. how many might be loading
+        // System.out.println("Rendered Chunks: " + chunksRenderedThisFrame);
         shader.unbind();
     }
 

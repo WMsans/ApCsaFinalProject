@@ -34,7 +34,7 @@ public class SimpleTerrain extends BaseTerrainGenerator {
     }
 
     @Override
-    protected void generateChunk(ChunkId chunkId) {
+    protected Chunk generateChunkData(ChunkId chunkId) {
         Chunk newChunk = new Chunk(chunkId);
         float worldChunkXBase = (float)chunkId.x * Chunk.CHUNK_SIZE_X;
         float worldChunkYBase = (float)chunkId.y * Chunk.CHUNK_SIZE_Y;
@@ -71,7 +71,6 @@ public class SimpleTerrain extends BaseTerrainGenerator {
         for(Block b : tempBlockList) {
             newChunk.addBlock(b);
         }
-        newChunk.getOrCreateMesh();
-        chunks.put(chunkId, newChunk); // Add to the map in the superclass
+        return newChunk;
     }
 }
