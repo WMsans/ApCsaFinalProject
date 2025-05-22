@@ -53,32 +53,37 @@ public class Renderer {
         int renderDist = config.getRenderDistanceInChunks();
         int chunksRenderedThisFrame = 0;
 
+        // Iterate through a square area that encompasses the circle/sphere
         for (int dx = -renderDist; dx <= renderDist; dx++) {
-            for (int dy = -renderDist; dy <= renderDist; dy++) {
+            for (int dy = -renderDist; dy <= renderDist; dy++) { // Assuming y-axis distance matters for rendering
                 for (int dz = -renderDist; dz <= renderDist; dz++) {
-                    ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
+                    // Calculate the squared distance from the player's chunk to the current chunk
+                    // Using squared distance avoids a square root calculation, which is more efficient
+                    double distanceSq = dx * dx + dy * dy + dz * dz;
 
-                    // terrain.getChunk() might return null if the chunk is still being generated
-                    Chunk chunkToRender = terrain.getChunk(currentChunkId);
+                    // Check if the chunk is within the spherical/circular render distance
+                    if (distanceSq <= renderDist * renderDist) {
+                        ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
 
-                    if (chunkToRender != null) { // Only proceed if chunk is loaded
-                        if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
-                            continue;
-                        }
+                        Chunk chunkToRender = terrain.getChunk(currentChunkId);
 
-                        ChunkMesh mesh = chunkToRender.getOrCreateMesh(); // Mesh should be ready if chunk is in main map
-                        if (mesh != null && mesh.isInitialized()) {
-                            Matrix4f modelMatrix = new Matrix4f().translate(chunkToRender.getMinCorner());
-                            shader.setUniform("modelMatrix", modelMatrix);
-                            mesh.render();
-                            chunksRenderedThisFrame++;
+                        if (chunkToRender != null) {
+                            if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
+                                continue;
+                            }
+
+                            ChunkMesh mesh = chunkToRender.getOrCreateMesh();
+                            if (mesh != null && mesh.isInitialized()) {
+                                Matrix4f modelMatrix = new Matrix4f().translate(chunkToRender.getMinCorner());
+                                shader.setUniform("modelMatrix", modelMatrix);
+                                mesh.render();
+                                chunksRenderedThisFrame++;
+                            }
                         }
                     }
                 }
             }
         }
-        // Optional: Log how many chunks were actually rendered vs. how many might be loading
-        // System.out.println("Rendered Chunks: " + chunksRenderedThisFrame);
         shader.unbind();
     }
 
