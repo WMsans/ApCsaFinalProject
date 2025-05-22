@@ -13,47 +13,51 @@ import java.util.Random;
 
 public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
 
-    private final FastNoiseLite noiseGen_BaseSmooth;
-    private final FastNoiseLite noiseGen_SpikeWorley; // 2D Cellular (Worley) noise for spike distance
+    private final FastNoiseLite baseNoise;
+    private final FastNoiseLite pillarNoise;
+    private final Random random;
 
-    // Terrain Base
-    private static final float TERRAIN_BASE_Y_LEVEL = 60.0f;
-    private static final float TERRAIN_SMOOTH_AMPLITUDE = 15.0f;
+    private static final float BASE_TERRAIN_HEIGHT = 20.0f;
+    private static final float BASE_TERRAIN_AMPLITUDE = 32.0f;
+    private static final float PILLAR_THRESHOLD = 0.6f; // Noise value above which pillars generate
+    private static final float PILLAR_MIN_HEIGHT = 15.0f;
+    private static final float PILLAR_AMPLITUDE = 150.0f; // Max additional height for pillars
+    // private static final int PILLAR_RADIUS = 3; // Radius of pillars in blocks (currently unused directly for shape)
 
-    // Ice Spikes (using 2D Worley noise for heightmap)
-    private static final float SPIKE_WORLEY_FREQUENCY = 0.05f; // Higher frequency = more, denser spikes
-    private static final float SPIKE_WORLEY_JITTER = 0.75f;    // Makes spike placement less grid-like
-    private static final float SPIKE_WORLEY_MAX_HEIGHT = 180.0f; // Max height of a spike at its center
-    private static final float SPIKE_WORLEY_RADIUS = 10.0f;     // Max horizontal radius of a spike's base
-    private static final float SPIKE_TAPER_EXPONENT_WORLEY = 1.5f; // Controls spike sharpness (1.0=cone, >1.0 sharper)
+    // Define some colors for the terrain
+    private static final Vector3f COLOR_SNOW = new Vector3f(0.95f, 0.95f, 0.98f);
+    private static final Vector3f COLOR_ICE = new Vector3f(0.6f, 0.8f, 0.95f);
+    private static final Vector3f COLOR_ROCK = new Vector3f(0.5f, 0.5f, 0.55f);
 
-
-    // Colors
-    private static final Vector3f COLOR_BASE_GROUND = new Vector3f(0.8f, 0.85f, 0.95f); // Light icy blue/white
-    private static final Vector3f COLOR_ICE_SPIKE_MAIN = new Vector3f(0.65f, 0.8f, 0.98f);
-    private static final Vector3f COLOR_SNOW_CAP = new Vector3f(0.95f, 0.98f, 1.0f);
+    // Constants for sine wave carving
+    private static final float SINE_WAVE_FREQUENCY_X_TO_Z = 25.0f; // Controls period of sin(x)
+    private static final float SINE_WAVE_AMPLITUDE_X_TO_Z = 6.0f;  // Controls z-offset magnitude for sin(x)
+    private static final float SINE_WAVE_FREQUENCY_Z_TO_X = 25.0f; // Controls period of sin(z)
+    private static final float SINE_WAVE_AMPLITUDE_Z_TO_X = 6.0f;  // Controls x-offset magnitude for sin(z)
+    private static final float SINE_WAVE_THICKNESS = 5.0f;      // How wide the carved path is
+    private static final float WAVE_SEPARATION_DISTANCE = 50.0f; // Distance between parallel sine wave paths
 
 
     public CryoPeakWildsTerrain(Config config) {
         super(config);
-        int worldSeed = new Random().nextInt();
+        int worldSeed = config.hashCode(); // Or use a fixed seed if you prefer
+        this.random = new Random(worldSeed);
 
-        noiseGen_BaseSmooth = new FastNoiseLite(worldSeed);
-        noiseGen_BaseSmooth.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
-        noiseGen_BaseSmooth.SetFrequency(0.005f);
-        noiseGen_BaseSmooth.SetFractalType(FastNoiseLite.FractalType.FBm);
-        noiseGen_BaseSmooth.SetFractalOctaves(3);
+        baseNoise = new FastNoiseLite(worldSeed);
+        baseNoise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
+        baseNoise.SetFrequency(0.008f); // Lower frequency for broader base terrain
+        baseNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
+        baseNoise.SetFractalOctaves(4);
+        baseNoise.SetFractalLacunarity(2.0f);
+        baseNoise.SetFractalGain(0.5f);
 
-        noiseGen_SpikeWorley = new FastNoiseLite(worldSeed + 1);
-        noiseGen_SpikeWorley.SetNoiseType(FastNoiseLite.NoiseType.Cellular);
-        noiseGen_SpikeWorley.SetFrequency(SPIKE_WORLEY_FREQUENCY);
-        noiseGen_SpikeWorley.SetCellularDistanceFunction(FastNoiseLite.CellularDistanceFunction.EuclideanSq); // Using squared distance initially
-        noiseGen_SpikeWorley.SetCellularReturnType(FastNoiseLite.CellularReturnType.Distance); // Distance to closest point
-        noiseGen_SpikeWorley.SetCellularJitter(SPIKE_WORLEY_JITTER);
-        // Note: The 'Distance' output from FastNoiseLite with EuclideanSq will be squared distance.
-        // We'll take the square root later if needed, or adjust SPIKE_WORLEY_RADIUS to be squared.
-        // For simplicity, let's assume Euclidean for now with the Distance return type.
-        noiseGen_SpikeWorley.SetCellularDistanceFunction(FastNoiseLite.CellularDistanceFunction.Euclidean);
+        pillarNoise = new FastNoiseLite(worldSeed + 1); // Different seed for pillar placement/height
+        pillarNoise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
+        pillarNoise.SetFrequency(0.025f); // Higher frequency for more varied pillar placement
+        pillarNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
+        pillarNoise.SetFractalOctaves(3);
+        pillarNoise.SetFractalLacunarity(2.2f);
+        pillarNoise.SetFractalGain(0.6f);
     }
 
     @Override
@@ -70,48 +74,79 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
                 float worldX = worldChunkXBase + lx + 0.5f;
                 float worldZ = worldChunkZBase + lz + 0.5f;
 
-                // --- Base Smooth Terrain Height ---
-                float baseSmoothNoise = noiseGen_BaseSmooth.GetNoise(worldX, worldZ);
-                float currentSmoothSurfaceY = TERRAIN_BASE_Y_LEVEL + baseSmoothNoise * TERRAIN_SMOOTH_AMPLITUDE;
+                // Generate base terrain height
+                float baseHeightNoiseVal = baseNoise.GetNoise(worldX, worldZ); // -1 to 1
+                float currentBaseSurfaceY = BASE_TERRAIN_HEIGHT + baseHeightNoiseVal * BASE_TERRAIN_AMPLITUDE;
 
-                // --- Spike Calculation using Worley Distance ---
-                float worleyDist = noiseGen_SpikeWorley.GetNoise(worldX, worldZ);
-                // The raw output of 'Distance' can vary. For FastNoiseLite, it's often normalized or related to frequency.
-                // Let's assume 'worleyDist' is the actual distance.
-                // If EuclideanSq was used, you'd do: worleyDist = (float)Math.sqrt(worleyDist);
+                // Generate pillar noise
+                float pillarPlacementNoiseVal = (pillarNoise.GetNoise(worldX, worldZ) + 1) / 2f; // 0 to 1
+                float pillarHeightNoiseVal = (pillarNoise.GetNoise(worldX * 0.5f, worldZ * 0.5f) +1) / 2f; // 0 to 1, slightly different scale for height
 
-                float spikeHeightContribution = 0.0f;
-                if (worleyDist < SPIKE_WORLEY_RADIUS) {
-                    // Calculate a factor from 1 (at center) to 0 (at radius edge)
-                    float normalizedDistanceFactor = 1.0f - (worleyDist / SPIKE_WORLEY_RADIUS);
-                    // Apply taper exponent
-                    spikeHeightContribution = SPIKE_WORLEY_MAX_HEIGHT * (float) Math.pow(normalizedDistanceFactor, SPIKE_TAPER_EXPONENT_WORLEY);
-                    spikeHeightContribution = Math.max(0, spikeHeightContribution); // Ensure non-negative
+                boolean isPillarCandidateLocation = pillarPlacementNoiseVal > PILLAR_THRESHOLD;
+                boolean carveOutPillarForThisColumn = false;
+
+                if (isPillarCandidateLocation) {
+                    // Carving pattern 1: z = sin(x) style + repetitions
+                    double baseSineZ = Math.sin(worldX / SINE_WAVE_FREQUENCY_X_TO_Z) * SINE_WAVE_AMPLITUDE_X_TO_Z;
+                    double diffZ = worldZ - baseSineZ;
+                    double modDiffZ = diffZ % WAVE_SEPARATION_DISTANCE;
+                    if (modDiffZ < 0) {
+                        modDiffZ += WAVE_SEPARATION_DISTANCE;
+                    }
+                    if (modDiffZ < SINE_WAVE_THICKNESS || modDiffZ > (WAVE_SEPARATION_DISTANCE - SINE_WAVE_THICKNESS)) {
+                        carveOutPillarForThisColumn = true;
+                    }
+
+                    // Carving pattern 2: x = sin(z) style + repetitions
+                    if (!carveOutPillarForThisColumn) {
+                        double baseSineX = Math.sin(worldZ / SINE_WAVE_FREQUENCY_Z_TO_X) * SINE_WAVE_AMPLITUDE_Z_TO_X;
+                        double diffX = worldX - baseSineX;
+                        double modDiffX = diffX % WAVE_SEPARATION_DISTANCE;
+                        if (modDiffX < 0) {
+                            modDiffX += WAVE_SEPARATION_DISTANCE;
+                        }
+                        if (modDiffX < SINE_WAVE_THICKNESS || modDiffX > (WAVE_SEPARATION_DISTANCE - SINE_WAVE_THICKNESS)) {
+                            carveOutPillarForThisColumn = true;
+                        }
+                    }
                 }
 
-                float totalSurfaceY = currentSmoothSurfaceY + spikeHeightContribution;
 
                 for (int ly = 0; ly < Chunk.CHUNK_SIZE_Y; ly++) {
                     float worldY = worldChunkYBase + ly + 0.5f;
                     boolean placeBlock = false;
-                    Vector3f blockColor = COLOR_BASE_GROUND;
+                    Vector3f blockColor = COLOR_ROCK; // Default to rock
 
-                    if (worldY < currentSmoothSurfaceY) {
-                        // Part of the smooth base terrain
+                    // Check for base terrain generation
+                    if (worldY < currentBaseSurfaceY) {
                         placeBlock = true;
-                        blockColor = COLOR_BASE_GROUND;
-                    } else if (worldY < totalSurfaceY && spikeHeightContribution > 0.1f) {
-                        // Part of a Worley-generated spike if contribution is significant
-                        placeBlock = true;
-
-                        // Determine color for the spike block
-                        float normalizedHeightInSpike = (worldY - currentSmoothSurfaceY) / Math.max(1.0f, spikeHeightContribution);
-                        if (normalizedHeightInSpike > 0.85f && spikeHeightContribution > SPIKE_WORLEY_MAX_HEIGHT * 0.4f) { // Snow on upper parts of taller spikes
-                            blockColor = COLOR_SNOW_CAP;
+                        if (worldY > currentBaseSurfaceY - 2.0f) { // Top layer of base
+                            blockColor = COLOR_SNOW;
+                        } else if (worldY > currentBaseSurfaceY - 5.0f) {
+                            blockColor = COLOR_ICE;
                         } else {
-                            blockColor = COLOR_ICE_SPIKE_MAIN;
+                            blockColor = COLOR_ROCK;
                         }
                     }
+
+                    // Check for pillar generation (if a pillar candidate and not carved out)
+                    if (isPillarCandidateLocation && !carveOutPillarForThisColumn) {
+                        float pillarMaxHeight = PILLAR_MIN_HEIGHT + pillarHeightNoiseVal * PILLAR_AMPLITUDE;
+                        // Check if current Y is within pillar height range and also above the base terrain
+                        if (worldY < pillarMaxHeight && worldY >= currentBaseSurfaceY - 2.0f) { // Pillars can start from slightly below base surface
+                            placeBlock = true; // This will ensure the block is placed, even if base terrain didn't dictate it, or override base color
+                            // Vary color with height for pillars
+                            float pillarRelativeHeight = (worldY - (currentBaseSurfaceY - 2.0f)) / (pillarMaxHeight - (currentBaseSurfaceY - 2.0f));
+                            if (pillarRelativeHeight > 0.8f) {
+                                blockColor = COLOR_SNOW;
+                            } else if (pillarRelativeHeight > 0.5f) {
+                                blockColor = COLOR_ICE;
+                            } else {
+                                blockColor = COLOR_ROCK;
+                            }
+                        }
+                    }
+
 
                     if (placeBlock) {
                         tempBlockList.add(new Block(worldX, worldY, worldZ, blockColor));

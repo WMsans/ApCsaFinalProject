@@ -24,12 +24,13 @@ public class Main implements Runnable {
     private final String windowTitle = "LWJGL Minecraft Prototype";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
-    private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.SIMPLE;
+    private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.CRYO_PEAK_WILDS;
 
     private enum TerrainType {
         NETHER,
         SIMPLE,
-        CRYO_PEAK_WILDS
+        CRYO_PEAK_WILDS,
+        CRYO_PEAK_WILDS_WORLEY
     }
 
     private BaseTerrainGenerator GetTerrainGenerator() {
@@ -40,6 +41,8 @@ public class Main implements Runnable {
                 return new SimpleTerrain(config);
             case CRYO_PEAK_WILDS:
                 return new CryoPeakWildsTerrain(config);
+            case CRYO_PEAK_WILDS_WORLEY:
+                return new CryoPeakWildsTerrainWorley(config);
             default:
                 throw new IllegalStateException("Unknown terrain generator type selected.");
         }
