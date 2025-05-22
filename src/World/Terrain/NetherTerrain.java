@@ -104,7 +104,8 @@ public class NetherTerrain extends BaseTerrainGenerator {
     }
 
     private Vector3f getInterpolatedColor(float worldY, Vector3f[] palette) {
-        float yProgress = (worldY / COLOR_TRANSITION_RANGE_Y);
+        float absoluteWorldY = Math.abs(worldY);
+        float yProgress = (absoluteWorldY / COLOR_TRANSITION_RANGE_Y);
         int colorIndex1 = (int) Math.floor(yProgress) % palette.length;
         int colorIndex2 = (colorIndex1 + 1) % palette.length;
         float t = yProgress - (float)Math.floor(yProgress);

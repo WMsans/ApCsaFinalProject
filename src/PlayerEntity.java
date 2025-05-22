@@ -89,8 +89,6 @@ public class PlayerEntity extends LivingEntity {
         Vector3f currentEyePosition = new Vector3f(this.position).add(0, getEyeHeight(), 0);
         this.camera.setPosition(currentEyePosition);
         this.camera.setYaw(this.yaw); // Sync camera yaw with entity's body yaw
-
-        System.out.println(position);
     }
 
     @Override

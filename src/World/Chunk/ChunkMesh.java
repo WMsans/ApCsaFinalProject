@@ -10,7 +10,10 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.List; // Keep for the input parameter
+import java.util.ArrayList; // Added for dynamic lists
+import java.util.HashSet; // Added for quick neighbor lookup
+import java.util.List;
+import java.util.Set; // Added for Set type
 
 public class ChunkMesh {
     private int vaoId;
@@ -19,47 +22,51 @@ public class ChunkMesh {
     private int indexCount; // Number of indices
 
     // Standard cube vertices (positions only, relative to block center)
+    // Order: Front, Back, Top, Bottom, Right, Left
     private static final float[] CUBE_POSITIONS = {
-            // Front face
-            -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,   0.5f,  0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,
-            // Back face
-            -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f,   0.5f,  0.5f, -0.5f,   0.5f, -0.5f, -0.5f,
-            // Top face
-            -0.5f,  0.5f, -0.5f, -0.5f,  0.5f,  0.5f,   0.5f,  0.5f,  0.5f,   0.5f,  0.5f, -0.5f,
-            // Bottom face
-            -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f,   0.5f, -0.5f,  0.5f,  -0.5f, -0.5f,  0.5f,
-            // Right face
-            0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,   0.5f,  0.5f,  0.5f,   0.5f, -0.5f,  0.5f,
-            // Left face
-            -0.5f, -0.5f, -0.5f, -0.5f, -0.5f,  0.5f,  -0.5f,  0.5f,  0.5f,  -0.5f,  0.5f, -0.5f,
+            // Front face (+Z)
+            -0.5f, -0.5f,  0.5f,   0.5f, -0.5f,  0.5f,    0.5f,  0.5f,  0.5f,   -0.5f,  0.5f,  0.5f,
+            // Back face (-Z)
+            -0.5f, -0.5f, -0.5f,  -0.5f,  0.5f, -0.5f,    0.5f,  0.5f, -0.5f,    0.5f, -0.5f, -0.5f,
+            // Top face (+Y)
+            -0.5f,  0.5f, -0.5f,  -0.5f,  0.5f,  0.5f,    0.5f,  0.5f,  0.5f,    0.5f,  0.5f, -0.5f,
+            // Bottom face (-Y)
+            -0.5f, -0.5f, -0.5f,   0.5f, -0.5f, -0.5f,    0.5f, -0.5f,  0.5f,   -0.5f, -0.5f,  0.5f,
+            // Right face (+X)
+            0.5f, -0.5f, -0.5f,   0.5f,  0.5f, -0.5f,    0.5f,  0.5f,  0.5f,    0.5f, -0.5f,  0.5f,
+            // Left face (-X)
+            -0.5f, -0.5f, -0.5f,  -0.5f, -0.5f,  0.5f,   -0.5f,  0.5f,  0.5f,   -0.5f,  0.5f, -0.5f,
     };
 
     private static final float[] CUBE_NORMALS = {
-            // Front face
+            // Front face (+Z)
             0.0f,  0.0f,  1.0f,   0.0f,  0.0f,  1.0f,   0.0f,  0.0f,  1.0f,   0.0f,  0.0f,  1.0f,
-            // Back face
+            // Back face (-Z)
             0.0f,  0.0f, -1.0f,   0.0f,  0.0f, -1.0f,   0.0f,  0.0f, -1.0f,   0.0f,  0.0f, -1.0f,
-            // Top face
+            // Top face (+Y)
             0.0f,  1.0f,  0.0f,   0.0f,  1.0f,  0.0f,   0.0f,  1.0f,  0.0f,   0.0f,  1.0f,  0.0f,
-            // Bottom face
+            // Bottom face (-Y)
             0.0f, -1.0f,  0.0f,   0.0f, -1.0f,  0.0f,   0.0f, -1.0f,  0.0f,   0.0f, -1.0f,  0.0f,
-            // Right face
+            // Right face (+X)
             1.0f,  0.0f,  0.0f,   1.0f,  0.0f,  0.0f,   1.0f,  0.0f,  0.0f,   1.0f,  0.0f,  0.0f,
-            // Left face
+            // Left face (-X)
             -1.0f,  0.0f,  0.0f,  -1.0f,  0.0f,  0.0f,  -1.0f,  0.0f,  0.0f,  -1.0f,  0.0f,  0.0f,
     };
 
-    private static final int[] CUBE_INDICES = {
-            0,  1,  2,    0,  2,  3, // Front
-            4,  5,  6,    4,  6,  7, // Back
-            8,  9, 10,    8, 10, 11, // Top
-            12, 13, 14,   12, 14, 15, // Bottom
-            16, 17, 18,   16, 18, 19, // Right
-            20, 21, 22,   20, 22, 23  // Left
+    // Indices for a single quad (two triangles), relative to the 4 vertices of a face
+    private static final int[] QUAD_INDICES = { 0, 1, 2, 0, 2, 3 };
+
+    // Offsets to find neighbor blocks, matching CUBE_POSITIONS face order:
+    // Front (+Z), Back (-Z), Top (+Y), Bottom (-Y), Right (+X), Left (-X)
+    private static final Vector3f[] FACE_NEIGHBOR_OFFSETS = {
+            new Vector3f( 0,  0,  1), // Front face (+Z)
+            new Vector3f( 0,  0, -1), // Back face (-Z)
+            new Vector3f( 0,  1,  0), // Top face (+Y)
+            new Vector3f( 0, -1,  0), // Bottom face (-Y)
+            new Vector3f( 1,  0,  0), // Right face (+X)
+            new Vector3f(-1,  0,  0)  // Left face (-X)
     };
 
-    private static final int VERTICES_PER_CUBE = 24; // 6 faces * 4 vertices
-    private static final int INDICES_PER_CUBE = 36;  // 6 faces * 2 triangles * 3 indices
     private static final int POSITION_COMPONENTS = 3;
     private static final int NORMAL_COMPONENTS = 3;
     private static final int COLOR_COMPONENTS = 3;
@@ -70,82 +77,100 @@ public class ChunkMesh {
     }
 
     public void buildMesh(List<Block> blocks, Vector3f chunkOrigin) {
+        if (isInitialized()) {
+            cleanup(); // Clean up old GL objects if rebuilding
+        }
+
         if (blocks.isEmpty()) {
             this.indexCount = 0;
-            // Ensure any existing GL resources are cleaned up if we're "building" an empty mesh
-            if (isInitialized()) {
-                cleanup();
-            }
             return;
         }
 
-        int numBlocks = blocks.size();
-        int totalFloats = numBlocks * VERTICES_PER_CUBE * FLOATS_PER_VERTEX;
-        int totalIndices = numBlocks * INDICES_PER_CUBE;
+        List<Float> vertexDataList = new ArrayList<>();
+        List<Integer> indexDataList = new ArrayList<>();
+        int currentVertexBaseOffset = 0; // Overall offset for indices in the combined mesh
 
-        float[] vertexData = new float[totalFloats];
-        int[] indexData = new int[totalIndices];
-
-        int floatPtr = 0;  // Pointer for vertexData array
-        int indexPtr = 0;  // Pointer for indexData array
-        int vertexOffset = 0; // Base for adjusting CUBE_INDICES for the current block
+        // Create a quick lookup for block world positions in the current chunk
+        Set<Vector3f> blockWorldPositionsInChunk = new HashSet<>();
+        for (Block b : blocks) {
+            blockWorldPositionsInChunk.add(b.getPosition());
+        }
 
         for (Block block : blocks) {
             Vector3f blockColor = block.getColor();
-            Vector3f blockPosRelToChunk = new Vector3f(block.getPosition()).sub(chunkOrigin);
+            Vector3f blockWorldPos = block.getPosition();
+            // Position of the block's center relative to the chunk's origin (minCorner)
+            Vector3f blockPosRelToChunk = new Vector3f(blockWorldPos).sub(chunkOrigin);
 
-            // Add vertex data for this block
-            for (int i = 0; i < VERTICES_PER_CUBE; ++i) {
-                // Position (relative to chunk origin)
-                vertexData[floatPtr++] = CUBE_POSITIONS[i * POSITION_COMPONENTS + 0] + blockPosRelToChunk.x;
-                vertexData[floatPtr++] = CUBE_POSITIONS[i * POSITION_COMPONENTS + 1] + blockPosRelToChunk.y;
-                vertexData[floatPtr++] = CUBE_POSITIONS[i * POSITION_COMPONENTS + 2] + blockPosRelToChunk.z;
+            // Iterate through each of the 6 faces of a cube
+            for (int faceIndex = 0; faceIndex < 6; faceIndex++) {
+                // Determine the world position of a potential neighbor on this face
+                Vector3f neighborWorldPos = new Vector3f(blockWorldPos).add(FACE_NEIGHBOR_OFFSETS[faceIndex]);
 
-                // Normal
-                vertexData[floatPtr++] = CUBE_NORMALS[i * NORMAL_COMPONENTS + 0];
-                vertexData[floatPtr++] = CUBE_NORMALS[i * NORMAL_COMPONENTS + 1];
-                vertexData[floatPtr++] = CUBE_NORMALS[i * NORMAL_COMPONENTS + 2];
+                boolean isExposed = !blockWorldPositionsInChunk.contains(neighborWorldPos);
 
-                // Color
-                vertexData[floatPtr++] = blockColor.x;
-                vertexData[floatPtr++] = blockColor.y;
-                vertexData[floatPtr++] = blockColor.z;
+                if (isExposed) {
+                    // This face is exposed, add its vertices and indices to the mesh data
+                    int vertexStartIndexInCubeData = faceIndex * 4; // Each face has 4 vertices in CUBE_POSITIONS
+
+                    for (int i = 0; i < 4; i++) { // For each of the 4 vertices of this face
+                        int cubeVertexArrayIndex = (vertexStartIndexInCubeData + i) * POSITION_COMPONENTS;
+                        int cubeNormalArrayIndex = (vertexStartIndexInCubeData + i) * NORMAL_COMPONENTS;
+
+                        // Position (relative to chunk origin)
+                        vertexDataList.add(CUBE_POSITIONS[cubeVertexArrayIndex + 0] + blockPosRelToChunk.x);
+                        vertexDataList.add(CUBE_POSITIONS[cubeVertexArrayIndex + 1] + blockPosRelToChunk.y);
+                        vertexDataList.add(CUBE_POSITIONS[cubeVertexArrayIndex + 2] + blockPosRelToChunk.z);
+
+                        // Normal
+                        vertexDataList.add(CUBE_NORMALS[cubeNormalArrayIndex + 0]);
+                        vertexDataList.add(CUBE_NORMALS[cubeNormalArrayIndex + 1]);
+                        vertexDataList.add(CUBE_NORMALS[cubeNormalArrayIndex + 2]);
+
+                        // Color
+                        vertexDataList.add(blockColor.x);
+                        vertexDataList.add(blockColor.y);
+                        vertexDataList.add(blockColor.z);
+                    }
+
+                    // Add indices for this face's quad
+                    // These indices are relative to the `currentVertexBaseOffset`
+                    for (int quadIndex : QUAD_INDICES) {
+                        indexDataList.add(currentVertexBaseOffset + quadIndex);
+                    }
+                    currentVertexBaseOffset += 4; // We added 4 vertices for this face
+                }
             }
-
-            // Add index data for this block
-            for (int k = 0; k < INDICES_PER_CUBE; ++k) {
-                indexData[indexPtr++] = CUBE_INDICES[k] + vertexOffset;
-            }
-            vertexOffset += VERTICES_PER_CUBE;
         }
 
-        this.indexCount = totalIndices;
-        if (this.indexCount == 0) { // Should not happen if blocks list is not empty, but good check
+        this.indexCount = indexDataList.size();
+        if (this.indexCount == 0) {
+            // No visible faces, ensure no GL resources are active if they were created then emptied
             if (isInitialized()) cleanup();
             return;
         }
 
+        // Convert ArrayLists to native buffers
         FloatBuffer verticesBuffer = null;
         IntBuffer indicesBuffer = null;
 
         try {
-            // If rebuilding, clean up old GL objects first
-            if (isInitialized()) {
-                cleanup();
-            }
+            verticesBuffer = MemoryUtil.memAllocFloat(vertexDataList.size());
+            for (Float val : vertexDataList) verticesBuffer.put(val);
+            verticesBuffer.flip();
+
+            indicesBuffer = MemoryUtil.memAllocInt(indexDataList.size());
+            for (Integer val : indexDataList) indicesBuffer.put(val);
+            indicesBuffer.flip();
 
             vaoId = GL30.glGenVertexArrays();
             GL30.glBindVertexArray(vaoId);
 
             vboId = GL15.glGenBuffers();
-            verticesBuffer = MemoryUtil.memAllocFloat(totalFloats);
-            verticesBuffer.put(vertexData).flip(); // Put the entire array
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, verticesBuffer, GL15.GL_STATIC_DRAW);
 
             eboId = GL15.glGenBuffers();
-            indicesBuffer = MemoryUtil.memAllocInt(totalIndices);
-            indicesBuffer.put(indexData).flip(); // Put the entire array
             GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
             GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL15.GL_STATIC_DRAW);
 
@@ -155,10 +180,10 @@ public class ChunkMesh {
             GL20.glVertexAttribPointer(0, POSITION_COMPONENTS, GL11.GL_FLOAT, false, stride, 0);
             GL20.glEnableVertexAttribArray(0);
             // Normal
-            GL20.glVertexAttribPointer(1, NORMAL_COMPONENTS, GL11.GL_FLOAT, false, stride, POSITION_COMPONENTS * Float.BYTES);
+            GL20.glVertexAttribPointer(1, NORMAL_COMPONENTS, GL11.GL_FLOAT, false, stride, (long)POSITION_COMPONENTS * Float.BYTES);
             GL20.glEnableVertexAttribArray(1);
             // Color
-            GL20.glVertexAttribPointer(2, COLOR_COMPONENTS, GL11.GL_FLOAT, false, stride, (POSITION_COMPONENTS + NORMAL_COMPONENTS) * Float.BYTES);
+            GL20.glVertexAttribPointer(2, COLOR_COMPONENTS, GL11.GL_FLOAT, false, stride, (long)(POSITION_COMPONENTS + NORMAL_COMPONENTS) * Float.BYTES);
             GL20.glEnableVertexAttribArray(2);
 
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
