@@ -1,17 +1,16 @@
 package World.Chunk;
 
-import Physics.CustomAABB; // New import
+import Physics.CustomAABB;
 import org.joml.Vector3f;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.CopyOnWriteArrayList; // Keep for thread-safe block modification
 import World.Block;
 
 
 public class Chunk {
     private final ChunkId id;
-    private final List<Block> blocks;
+    private final List<Block> blocks; // Changed to ArrayList
     private final Vector3f minCorner;
     private final Vector3f maxCorner;
     private final CustomAABB boundingBox; // New AABB for the chunk
@@ -26,7 +25,7 @@ public class Chunk {
 
     public Chunk(ChunkId id) {
         this.id = id;
-        this.blocks = new CopyOnWriteArrayList<>();
+        this.blocks = new ArrayList<>(); // Changed to ArrayList
 
         this.minCorner = new Vector3f(
                 (float)id.x * CHUNK_SIZE_X,
@@ -47,10 +46,11 @@ public class Chunk {
     }
 
     public void addBlock(Block block) {
-        if (!blocks.contains(block)) {
-            blocks.add(block);
-            needsMeshRebuild = true; // Mark for rebuild
-        }
+        // Consider synchronization if this method can be called concurrently
+        // on the same Chunk instance from different threads after initial generation.
+        // For initial generation within a single worker thread, this is fine.
+        blocks.add(block);
+        needsMeshRebuild = true;
     }
 
     public boolean removeBlock(Block block) {
@@ -62,10 +62,16 @@ public class Chunk {
     }
 
     public List<Block> getBlocks() {
-        return Collections.unmodifiableList(blocks); // Still provide access if needed elsewhere
+        // If accessed concurrently with modifications, and you need a stable view,
+        // you might need to rethink this or synchronize access.
+        // However, for read-only purposes like rendering after mesh build, it's okay.
+        return Collections.unmodifiableList(blocks);
     }
 
-    // Provides direct access to the mutable list for mesh building, use with caution
+    // Provides direct access to the mutable list.
+    // Used by ChunkMesh.buildMesh(). Ensure this access is managed safely
+    // if concurrent modification/reading is possible.
+    // Given current structure (mesh build on main thread after generation), this should be okay.
     public List<Block> getModifiableBlocks() {
         return blocks;
     }
@@ -91,18 +97,17 @@ public class Chunk {
 
     // Mesh management
     public ChunkMesh getOrCreateMesh() {
-        if (chunkMesh == null) { // Should be initialized in constructor, but as a safeguard
+        if (chunkMesh == null) {
             chunkMesh = new ChunkMesh();
-            needsMeshRebuild = true; // Force build if it was null
+            needsMeshRebuild = true;
         }
         if (needsMeshRebuild || !chunkMesh.isInitialized()) {
-            if(chunkMesh.isInitialized()) chunkMesh.cleanup(); // Clean old mesh if rebuilding
-            List<Block> currentBlocks = getModifiableBlocks(); // Get the actual list for building
+            if(chunkMesh.isInitialized()) chunkMesh.cleanup();
+            List<Block> currentBlocks = getModifiableBlocks();
             if (!currentBlocks.isEmpty()) {
-                // Pass blocks and chunk's world origin (minCorner)
                 chunkMesh.buildMesh(currentBlocks, this.minCorner);
             } else {
-                chunkMesh.cleanup(); // Ensure no VAO if no blocks
+                chunkMesh.cleanup();
             }
             needsMeshRebuild = false;
         }

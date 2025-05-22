@@ -21,7 +21,7 @@ public class Main implements Runnable {
     private PlayerEntity playerEntity;
     private Config config;
 
-    private final String windowTitle = "LWJGL Minecraft Prototype - Chunk System";
+    private final String windowTitle = "LWJGL Minecraft Prototype";
     private final int initialWidth = 1280;
     private final int initialHeight = 720;
     private final TerrainType TERRAIN_GENERATOR_TYPE = TerrainType.SIMPLE;
