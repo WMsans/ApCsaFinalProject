@@ -1,3 +1,5 @@
+package Graphics;
+
 import Configuration.Config;
 import World.Terrain.BaseTerrainGenerator;
 import World.Chunk.*;

@@ -1,3 +1,6 @@
+import Graphics.Renderer;
+import Graphics.Window;
+import World.Entities.PlayerEntity;
 import World.Terrain.*;
 import Input.*;
 import Configuration.*;
@@ -176,7 +179,6 @@ public class Main implements Runnable {
             terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks());
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            // Renderer will handle cases where some chunks are not yet loaded
             renderer.renderTerrain(terrain, playerEntity.getPosition());
             window.swapBuffers();
             glfwPollEvents();

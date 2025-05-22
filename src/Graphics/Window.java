@@ -1,3 +1,5 @@
+package Graphics;
+
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.system.MemoryStack;
@@ -23,8 +25,8 @@ public class Window {
     public void create() {
         // Configure GLFW
         glfwDefaultWindowHints();
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // Window will be hidden after creation
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // Window will be resizable
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // Graphics.Window will be hidden after creation
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // Graphics.Window will be resizable
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // Use OpenGL 3.3
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);

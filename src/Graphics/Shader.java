@@ -1,3 +1,5 @@
+package Graphics;
+
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.system.MemoryStack;
 
@@ -22,7 +24,7 @@ public class Shader {
     public Shader() throws Exception {
         programId = GL20.glCreateProgram();
         if (programId == 0) {
-            throw new Exception("Could not create Shader program");
+            throw new Exception("Could not create Graphics.Shader program");
         }
         uniforms = new HashMap<>();
     }
@@ -45,7 +47,7 @@ public class Shader {
         GL20.glCompileShader(shaderId);
 
         if (GL20.glGetShaderi(shaderId, GL20.GL_COMPILE_STATUS) == 0) {
-            throw new Exception("Error compiling Shader code (Type: " + shaderType + "): "
+            throw new Exception("Error compiling Graphics.Shader code (Type: " + shaderType + "): "
                     + GL20.glGetShaderInfoLog(shaderId, 1024));
         }
 
@@ -56,7 +58,7 @@ public class Shader {
     public void link() throws Exception {
         GL20.glLinkProgram(programId);
         if (GL20.glGetProgrami(programId, GL20.GL_LINK_STATUS) == 0) {
-            throw new Exception("Error linking Shader code: "
+            throw new Exception("Error linking Graphics.Shader code: "
                     + GL20.glGetProgramInfoLog(programId, 1024));
         }
 
@@ -69,7 +71,7 @@ public class Shader {
 
         GL20.glValidateProgram(programId);
         if (GL20.glGetProgrami(programId, GL20.GL_VALIDATE_STATUS) == 0) {
-            System.err.println("Warning validating Shader code: "
+            System.err.println("Warning validating Graphics.Shader code: "
                     + GL20.glGetProgramInfoLog(programId, 1024));
         }
     }

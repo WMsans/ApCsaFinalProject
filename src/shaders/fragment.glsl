@@ -7,7 +7,7 @@ in vec3 VertexColor_FS;   // Directly use the color from VS
 
 uniform vec3 lightPos;     // Light position in world space
 uniform vec3 lightColor;
-uniform vec3 viewPos;      // Camera position in world space
+uniform vec3 viewPos;      // Graphics.Camera position in world space
 uniform float gamma;
 
 void main() {

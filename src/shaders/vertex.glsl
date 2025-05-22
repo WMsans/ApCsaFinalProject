@@ -8,9 +8,9 @@ layout (location = 1) in int packedColorData;
 uniform mat4 projectionMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 modelMatrix; // Changed from vec3 worldPosition to mat4 modelMatrix
-// uniform vec3 viewPos; // Camera's world position (if needed, pass from Java)
+// uniform vec3 viewPos; // Graphics.Camera's world position (if needed, pass from Java)
 
-// Outputs to Fragment Shader
+// Outputs to Fragment Graphics.Shader
 out vec3 FragPos_FS_world;
 out vec3 Normal_FS_world;
 out vec3 VertexColor_FS;
