@@ -77,8 +77,6 @@ public class Shader {
     public void createUniform(String uniformName) throws Exception {
         int uniformLocation = GL20.glGetUniformLocation(programId, uniformName);
         if (uniformLocation < 0) {
-            // It's not an error if a uniform is not found, it might be optimized out by the GLSL compiler
-            // if it's not used. However, for critical uniforms, you might want to throw an exception.
             System.err.println("Could not find uniform (it might be unused/optimized out): " + uniformName);
         }
         uniforms.put(uniformName, uniformLocation);
@@ -86,7 +84,6 @@ public class Shader {
 
     public void setUniform(String uniformName, Matrix4f value) {
         Integer location = uniforms.get(uniformName);
-        // Only try to set the uniform if its location was found (not -1)
         if (location != null && location >= 0) {
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 FloatBuffer fb = stack.mallocFloat(16);
@@ -110,6 +107,14 @@ public class Shader {
         }
     }
 
+    public void setUniform(String uniformName, int value) {
+        Integer location = uniforms.get(uniformName);
+        if (location != null && location >= 0) {
+            GL20.glUniform1i(location, value);
+        }
+    }
+
+
     public void bind() {
         GL20.glUseProgram(programId);
     }
@@ -127,7 +132,6 @@ public class Shader {
 
     public static String loadResource(String fileName) throws Exception {
         String result;
-        // Ensure the path starts with a '/' to indicate it's an absolute path in the classpath
         if (!fileName.startsWith("/")) {
             fileName = "/" + fileName;
         }

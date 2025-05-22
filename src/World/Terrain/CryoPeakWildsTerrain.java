@@ -29,12 +29,16 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
     private static final float PILLAR_THRESHOLD = 0.6f; // Noise value above which pillars generate
     private static final float PILLAR_MIN_HEIGHT = 15.0f;
     private static final float PILLAR_AMPLITUDE = 150.0f; // Max additional height for pillars
-    // private static final int PILLAR_RADIUS = 3; // Radius of pillars in blocks (currently unused directly for shape)
 
-    // Define some colors for the terrain
-    private static final Vector3f COLOR_SNOW = new Vector3f(0.95f, 0.95f, 0.98f);
-    private static final Vector3f COLOR_ICE = new Vector3f(0.6f, 0.8f, 0.95f);
-    private static final Vector3f COLOR_ROCK = new Vector3f(0.5f, 0.5f, 0.55f);
+    // Color strategy from NetherTerrain
+    private static final Vector3f[] TERRAIN_COLORS = {
+            new Vector3f(0.545f, 0.118f, 1.0f), // #8c1eff
+            new Vector3f(0.949f, 0.133f, 1.0f), // #f222ff
+            new Vector3f(1.0f, 0.161f, 0.459f), // #ff2975
+            new Vector3f(1.0f, 0.565f, 0.122f)  // #ff901f
+    };
+    private static final int COLOR_TRANSITION_RANGE_Y = 10;
+
 
     // Constants for sine wave carving
     private static final float SINE_WAVE_FREQUENCY_X_TO_Z = 25.0f; // Controls period of sin(x)
@@ -65,6 +69,23 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
         pillarNoise.SetFractalOctaves(3);
         pillarNoise.SetFractalLacunarity(2.2f);
         pillarNoise.SetFractalGain(0.6f);
+    }
+
+    private Vector3f lerpColor(Vector3f color1, Vector3f color2, float t) {
+        t = Math.max(0, Math.min(1, t));
+        float r = color1.x * (1 - t) + color2.x * t;
+        float g = color1.y * (1 - t) + color2.y * t;
+        float b = color1.z * (1 - t) + color2.z * t;
+        return new Vector3f(r, g, b);
+    }
+
+    private Vector3f getInterpolatedColor(float worldY, Vector3f[] palette) {
+        float absoluteWorldY = Math.abs(worldY);
+        float yProgress = (absoluteWorldY / COLOR_TRANSITION_RANGE_Y);
+        int colorIndex1 = (int) Math.floor(yProgress) % palette.length;
+        int colorIndex2 = (colorIndex1 + 1) % palette.length;
+        float t = yProgress - (float)Math.floor(yProgress);
+        return lerpColor(palette[colorIndex1], palette[colorIndex2], t);
     }
 
     @Override
@@ -137,18 +158,11 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
                 for (int ly = 0; ly < Chunk.CHUNK_SIZE_Y; ly++) {
                     float worldY = worldChunkYBase + ly + 0.5f;
                     boolean placeBlock = false;
-                    Vector3f blockColor = COLOR_ROCK; // Default to rock
+                    Vector3f blockColor; // Will be set by new color logic
 
                     // Check for base terrain generation
                     if (worldY < currentBaseSurfaceY) {
                         placeBlock = true;
-                        if (worldY > currentBaseSurfaceY - 2.0f) { // Top layer of base
-                            blockColor = COLOR_SNOW;
-                        } else if (worldY > currentBaseSurfaceY - 5.0f) {
-                            blockColor = COLOR_ICE;
-                        } else {
-                            blockColor = COLOR_ROCK;
-                        }
                     }
 
                     // Check for pillar generation (if a pillar candidate and not carved out)
@@ -156,21 +170,13 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
                         float pillarMaxHeight = PILLAR_MIN_HEIGHT + pillarHeightNoiseVal * PILLAR_AMPLITUDE;
                         // Check if current Y is within pillar height range and also above the base terrain
                         if (worldY < pillarMaxHeight && worldY >= currentBaseSurfaceY - 2.0f) { // Pillars can start from slightly below base surface
-                            placeBlock = true; // This will ensure the block is placed, even if base terrain didn't dictate it, or override base color
-                            // Vary color with height for pillars
-                            float pillarRelativeHeight = (worldY - (currentBaseSurfaceY - 2.0f)) / (pillarMaxHeight - (currentBaseSurfaceY - 2.0f));
-                            if (pillarRelativeHeight > 0.8f) {
-                                blockColor = COLOR_SNOW;
-                            } else if (pillarRelativeHeight > 0.5f) {
-                                blockColor = COLOR_ICE;
-                            } else {
-                                blockColor = COLOR_ROCK;
-                            }
+                            placeBlock = true; // This will ensure the block is placed, even if base terrain didn't dictate it
                         }
                     }
 
 
                     if (placeBlock) {
+                        blockColor = getInterpolatedColor(worldY, TERRAIN_COLORS);
                         tempBlockList.add(new Block(worldX, worldY, worldZ, blockColor));
                     }
                 }
