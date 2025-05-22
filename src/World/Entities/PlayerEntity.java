@@ -13,6 +13,7 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import java.util.Random;
 import java.util.List;
+import java.util.ArrayList; // Added for findNearestSafeSpot
 import Inventory.*;
 import Configuration.Config;
 import Input.Input;
@@ -56,9 +57,14 @@ public class PlayerEntity extends LivingEntity {
     private float currentHookStringLength = 0.0f;
 
     private final float HOOK_MAX_RANGE = 128.0f; // Max distance hook can be shot
-    private final float GAS_FORCE_MAGNITUDE = 275.0f; // Force applied when releasing gas
-    private final float RELEASE_IMPULSE_MAGNITUDE = 15.0f; // Impulse when releasing a stabilized hook
+    private final float GAS_FORCE_MAGNITUDE = 50.0f; // Force applied when RELEASING gas (continuous)
+    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 12.0f; // Impulse when PRESSING space with hook (NEW)
+    private final float RELEASE_IMPULSE_MAGNITUDE = 18.0f; // Impulse when RELEASING a stabilized hook
     private final float HOOK_TENSION_CORRECTION_FACTOR = 0.8f; // How strongly to correct position/velocity due to tension
+    private final float SIMILAR_DIRECTION_THRESHOLD = 0.7f; // Cosine of angle for speed retention logic (e.g., > cos(45 deg))
+    private static final int MAX_STUCK_RECOVERY_ATTEMPTS = 16; // Max attempts to find a safe spot
+    private static final float STUCK_RECOVERY_SEARCH_RADIUS_INCREMENT = 0.5f; // How much to expand search radius each attempt
+
 
     public PlayerEntity(Input input, Window window, BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Config config) {
         super(worldTerrain, initialPosition, new Vector3f(0.6f, 1.8f, 0.6f), 20.0f);
@@ -83,7 +89,7 @@ public class PlayerEntity extends LivingEntity {
         }
 
         handleMouseLook();
-        handleHookInput(deltaTime); // New: Handle hook-related inputs
+        handleHookInput(deltaTime);
 
         if (!isFlying || !config.isDebugFlyModeEnabled()) {
             handleJumpBuffering(deltaTime);
@@ -93,13 +99,42 @@ public class PlayerEntity extends LivingEntity {
             jumpKeyHeld = false;
         }
 
-        handleKeyboardMovement(deltaTime); // Handles walking, flying, and now gas release
-        // handleBlockInteractionInput(); // Original block breaking/placing logic - now replaced by hook
+        handleKeyboardMovement(deltaTime); // This updates velocity based on input
+
+        // Hook tension can also affect velocity and position
+        if (currentHookState == HookState.STABILIZED && activeHook != null && activeHook.isAttached()) {
+            handleHookTension(deltaTime);
+        }
+
+        float absoluteMaxSpeed = config.getFlySpeed(); // Cap speed before applying movement
+        float currentSpeedSq = velocity.lengthSquared();
+
+        if (currentSpeedSq > absoluteMaxSpeed * absoluteMaxSpeed) {
+            float currentSpeed = (float) Math.sqrt(currentSpeedSq);
+            velocity.mul(absoluteMaxSpeed / currentSpeed);
+        }
 
         super.update(deltaTime, currentTime); // Entity.update -> applyGravity, moveEntity, updateLogic
 
-        if (currentHookState == HookState.STABILIZED && activeHook != null && activeHook.isAttached()) {
-            handleHookTension(deltaTime);
+        // Stuck check and recovery
+        if (isStuck()) {
+            System.err.println("Player is stuck! Attempting recovery...");
+            Vector3f safeSpot = findNearestSafeSpot();
+            if (safeSpot != null) {
+                System.out.println("Found safe spot at: " + safeSpot + ". Teleporting.");
+                teleport(safeSpot);
+                velocity.zero(); // Reset velocity after teleporting from a stuck state
+                isOnGround = false; // Re-evaluate ground state after teleport
+                // Immediately check if the new spot is actually safe to avoid teleport loops.
+                if (isStuck()) {
+                    System.err.println("Teleported to a new spot but still stuck. Emergency fallback to high up.");
+                    teleport(new Vector3f(position.x, position.y + Chunk.CHUNK_SIZE_Y * 2, position.z)); // Default to high up
+                }
+            } else {
+                System.err.println("Could not find a safe spot to recover. Player remains stuck.");
+                // As a last resort, could teleport player to a known "world origin" or last safe hub.
+                teleport(new Vector3f(position.x, position.y + Chunk.CHUNK_SIZE_Y * 3, position.z)); // Default to high up
+            }
         }
 
 
@@ -113,8 +148,100 @@ public class PlayerEntity extends LivingEntity {
         // Player-specific passive logic
     }
 
+    private boolean isStuck() {
+        CustomAABB playerBox = getBoundingBoxWorld();
+        Vector3f entityDimensions = new Vector3f(
+                localBoundingBox.max.x - localBoundingBox.min.x,
+                localBoundingBox.max.y - localBoundingBox.min.y,
+                localBoundingBox.max.z - localBoundingBox.min.z
+        );
+        List<Block> nearbyBlocks = worldTerrain.getBlocksForCollision(this.position, entityDimensions);
+
+        for (Block block : nearbyBlocks) {
+            CustomAABB blockBox = CustomAABB.forBlock(block.getPosition());
+            if (playerBox.testAABB(blockBox)) {
+                // Check if the intersection volume is significant (optional, simple check is often enough)
+                return true; // Player is intersecting with a block
+            }
+        }
+        return false; // No intersection found
+    }
+
+
+    private Vector3f findNearestSafeSpot() {
+        Vector3f searchCenter = new Vector3f(this.position);
+        Vector3f entityDimensions = new Vector3f(
+                localBoundingBox.max.x - localBoundingBox.min.x,
+                localBoundingBox.max.y - localBoundingBox.min.y,
+                localBoundingBox.max.z - localBoundingBox.min.z
+        );
+        CustomAABB testBox = new CustomAABB(localBoundingBox.min, localBoundingBox.max);
+
+        // Search pattern: spiral outwards and upwards
+        for (int attempt = 0; attempt < MAX_STUCK_RECOVERY_ATTEMPTS; attempt++) {
+            float currentSearchRadius = STUCK_RECOVERY_SEARCH_RADIUS_INCREMENT * (attempt +1);
+            // Check cardinal directions, then diagonals, then move up/down
+            // This is a simplified search; a more robust one might use a spiral or expanding shell.
+
+            // Check points on an expanding cylinder, prioritizing positions above the current one.
+            for (float yOffset = 0; yOffset <= currentSearchRadius * 2; yOffset += entityDimensions.y / 2.0f) { // Search upwards first
+                for (float angle = 0; angle < 360; angle += 45) { // Check around the player
+                    float rad = (float) Math.toRadians(angle);
+                    float xOffset = (float) Math.cos(rad) * currentSearchRadius;
+                    float zOffset = (float) Math.sin(rad) * currentSearchRadius;
+
+                    Vector3f testPos = new Vector3f(searchCenter.x + xOffset, searchCenter.y + yOffset, searchCenter.z + zOffset);
+                    testBox = localBoundingBox.translate(testPos);
+
+                    boolean collision = false;
+                    // Need to get blocks around testPos now
+                    List<Block> candidateBlocks = worldTerrain.getBlocksForCollision(testPos, entityDimensions);
+                    for (Block block : candidateBlocks) {
+                        CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
+                        if (testBox.testAABB(blockAABB)) {
+                            collision = true;
+                            break;
+                        }
+                    }
+                    if (!collision) {
+                        // Check if space below is solid enough to stand on (optional, but good)
+                        Vector3f posBelow = new Vector3f(testPos).sub(0, entityDimensions.y / 2f + 0.1f, 0); // Check slightly below feet
+                        if(worldTerrain.isBlockAt(posBelow) || worldTerrain.isBlockAt(new Vector3f(testPos).sub(0,0.1f,0))) { // Check if ground is there.
+                            return testPos;
+                        }
+                    }
+                }
+            }
+            // If still no spot, try searching downwards a bit as a last resort before expanding radius too much
+            if(attempt > MAX_STUCK_RECOVERY_ATTEMPTS / 2) {
+                for (float yOffset = -entityDimensions.y / 2.0f; yOffset >= -currentSearchRadius; yOffset -= entityDimensions.y / 2.0f) {
+                    for (float angle = 0; angle < 360; angle += 45) {
+                        float rad = (float) Math.toRadians(angle);
+                        float xOffset = (float) Math.cos(rad) * currentSearchRadius;
+                        float zOffset = (float) Math.sin(rad) * currentSearchRadius;
+                        Vector3f testPos = new Vector3f(searchCenter.x + xOffset, searchCenter.y + yOffset, searchCenter.z + zOffset);
+                        testBox = localBoundingBox.translate(testPos);
+                        boolean collision = false;
+                        List<Block> candidateBlocks = worldTerrain.getBlocksForCollision(testPos, entityDimensions);
+                        for (Block block : candidateBlocks) {
+                            CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
+                            if (testBox.testAABB(blockAABB)) {
+                                collision = true;
+                                break;
+                            }
+                        }
+                        if (!collision) return testPos; // Less stringent check for downwards, might be in air
+                    }
+                }
+            }
+        }
+        return null; // No safe spot found within attempts
+    }
+
+
     private void handleFlyModeToggle(float currentTime) {
-        if (input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState != HookState.STABILIZED) { // Don't toggle fly if hooked
+        // Don't toggle fly if hooked and space is pressed (as space might be for gas impulse/release)
+        if (input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState != HookState.STABILIZED) {
             if (lastSpacePressTime > 0 && (currentTime - lastSpacePressTime) < DOUBLE_SPACE_PRESS_INTERVAL) {
                 isFlying = !isFlying;
                 if (isFlying) {
@@ -156,8 +283,8 @@ public class PlayerEntity extends LivingEntity {
         if (jumpBufferTimer > 0) {
             jumpBufferTimer -= deltaTime;
         }
-        // Only buffer jump if space is pressed and not trying to release gas with a hook
-        if (input.isKeyPressed(GLFW_KEY_SPACE) && !(currentHookState == HookState.STABILIZED && !isOnGround)) {
+        if (input.isKeyPressed(GLFW_KEY_SPACE) &&
+                !(!isFlying && currentHookState == HookState.STABILIZED && !isOnGround)) {
             jumpBufferTimer = config.getJumpBufferTime();
         }
     }
@@ -176,7 +303,7 @@ public class PlayerEntity extends LivingEntity {
         if (isFlying && config.isDebugFlyModeEnabled()) {
             handleFlyingMovement(deltaTime);
         } else {
-            handleWalkingAndGasMovement(deltaTime); // Modified to include gas
+            handleWalkingAndGasMovement(deltaTime);
         }
     }
 
@@ -184,7 +311,7 @@ public class PlayerEntity extends LivingEntity {
         velocity.zero();
         Vector3f flyDirection = new Vector3f(0,0,0);
         Vector3f camForward = camera.getForwardDirection(true);
-        Vector3f camRight = camera.getRightDirection(true); // Use true 3D right for flying
+        Vector3f camRight = camera.getRightDirection(true);
 
         if (input.isKeyDown(GLFW_KEY_W)) flyDirection.add(camForward);
         if (input.isKeyDown(GLFW_KEY_S)) flyDirection.sub(camForward);
@@ -200,7 +327,6 @@ public class PlayerEntity extends LivingEntity {
         isOnGround = false;
     }
 
-
     private void handleWalkingAndGasMovement(float deltaTime) {
         Vector3f inputDir = new Vector3f(0,0,0);
         Vector3f forwardXZ = new Vector3f((float)Math.cos(Math.toRadians(this.yaw)), 0, (float)Math.sin(Math.toRadians(this.yaw))).normalize();
@@ -211,15 +337,32 @@ public class PlayerEntity extends LivingEntity {
         if (input.isKeyDown(GLFW_KEY_A)) inputDir.sub(rightXZ);
         if (input.isKeyDown(GLFW_KEY_D)) inputDir.add(rightXZ);
 
+        Vector3f targetVelocityXZ;
         if (inputDir.lengthSquared() > 0) {
             inputDir.normalize();
+            Vector2f currentHorizontalVel2D = new Vector2f(velocity.x, velocity.z);
+            float currentHorizontalSpeed = currentHorizontalVel2D.length();
+            final float maxWalkSpeed = config.getMaxSpeed();
+
+            if (currentHorizontalSpeed > maxWalkSpeed) {
+                Vector2f currentDirNorm = new Vector2f(currentHorizontalVel2D).normalize();
+                Vector2f inputDir2D = new Vector2f(inputDir.x, inputDir.z);
+
+                if (currentDirNorm.dot(inputDir2D) >= SIMILAR_DIRECTION_THRESHOLD) {
+                    targetVelocityXZ = new Vector3f(inputDir.x * currentHorizontalSpeed, 0, inputDir.z * currentHorizontalSpeed);
+                } else {
+                    targetVelocityXZ = new Vector3f(inputDir).mul(maxWalkSpeed);
+                }
+            } else {
+                targetVelocityXZ = new Vector3f(inputDir).mul(maxWalkSpeed);
+            }
+        } else {
+            targetVelocityXZ = new Vector3f(0,0,0);
         }
 
-        Vector3f targetVelocityXZ = new Vector3f(inputDir).mul(config.getMaxSpeed());
         float accel = config.getAcceleration();
         float decel = isOnGround ? config.getGroundDeceleration() : config.getAirDeceleration();
 
-        // X-axis velocity change
         if (Math.abs(targetVelocityXZ.x - velocity.x) > 0.01f) {
             float diffX = targetVelocityXZ.x - velocity.x;
             float changeX = Math.signum(diffX) * accel * deltaTime;
@@ -231,7 +374,6 @@ public class PlayerEntity extends LivingEntity {
             velocity.x += changeX;
         }
 
-        // Z-axis velocity change
         if (Math.abs(targetVelocityXZ.z - velocity.z) > 0.01f) {
             float diffZ = targetVelocityXZ.z - velocity.z;
             float changeZ = Math.signum(diffZ) * accel * deltaTime;
@@ -243,32 +385,22 @@ public class PlayerEntity extends LivingEntity {
             velocity.z += changeZ;
         }
 
-        Vector2f currentHorizontalVelocity = new Vector2f(velocity.x, velocity.z);
-        if (currentHorizontalVelocity.lengthSquared() > config.getMaxSpeed() * config.getMaxSpeed()) {
-            if (inputDir.lengthSquared() > 0) {
-                currentHorizontalVelocity.normalize().mul(config.getMaxSpeed());
-                velocity.x = currentHorizontalVelocity.x;
-                velocity.z = currentHorizontalVelocity.y;
-            }
+        if(input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying){
+            System.out.println("Player applying gas impulse on space press.");
+            Vector3f camForward = camera.getForwardDirection(true);
+            addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(0, GAS_IMPULSE_ON_PRESS_MAGNITUDE, 0));
+
+            isOnGround = false;
+            coyoteTimer = 0;
+            jumpBufferTimer = 0;
         }
 
-        // Gas Release Logic (only if not flying)
-        if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED) {
-            System.out.println("Player trying to release gas.");
-            Vector3f gasForceDirection = camera.getForwardDirection(true); // Gas propels in camera's facing direction
-            // Add an upward component to the gas force
-            Vector3f upwardForce = new Vector3f(0, 0.3f, 0); // Define upward vector
-            Vector3f combinedGasForce = new Vector3f(gasForceDirection).add(upwardForce).normalize(); // Combine and normalize
-            addVelocity(combinedGasForce.mul(GAS_FORCE_MAGNITUDE * deltaTime)); // Apply as acceleration over time
-            // Tension will be handled by handleHookTension
-        } else if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState != HookState.STABILIZED) {
-            //System.out.println("Gas release attempted but hook not stabilized or player on ground.");
-            // Potentially add a short burst effect here even if not hooked, or a sound. For now, it does nothing.
+        if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED && !isFlying) {
+            Vector3f gasForceDirection = camera.getForwardDirection(true);
+            addVelocity(gasForceDirection.mul(GAS_FORCE_MAGNITUDE * deltaTime).add(0, GAS_FORCE_MAGNITUDE * deltaTime, 0));
         }
 
-
-        // Jump logic (not when releasing gas with hook)
-        if (jumpBufferTimer > 0 && !(input.isKeyDown(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED)) {
+        if (jumpBufferTimer > 0 && !(input.isKeyDown(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying)) {
             if (isOnGround || coyoteTimer > 0) {
                 velocity.y = config.getJumpUpSpeed();
                 isOnGround = false;
@@ -282,20 +414,12 @@ public class PlayerEntity extends LivingEntity {
     @Override
     protected void applyGravity(float deltaTime) {
         if (isFlying && config.isDebugFlyModeEnabled()) {
-            return; // No gravity when flying
-        }
-        // No gravity if hook is stabilized and player is not on ground (tension and gas handle vertical movement)
-        if (currentHookState == HookState.STABILIZED && !isOnGround) {
-            // If player is being pulled upwards or maintained by tension, gravity might be counteracted.
-            // For a strong pull effect, we can reduce or negate gravity here.
-            // For now, let's allow some gravity unless player is actively using gas upwards or tension is strong.
-            // This part might need more tuning based on desired feel.
-            // Let's assume tension and gas are primary vertical controllers when hooked.
-            // However, a base level of gravity should still apply unless specific conditions are met.
+            return;
         }
 
         float currentGravity = config.getFallAcceleration();
-        if (velocity.y > 0 && !jumpKeyHeld && !(currentHookState == HookState.STABILIZED && input.isKeyDown(GLFW_KEY_SPACE))) {
+        if (velocity.y > 0 && !jumpKeyHeld &&
+                !(currentHookState == HookState.STABILIZED && input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround)) {
             currentGravity *= config.getJumpEndEarlyGravityModifier();
         }
 
@@ -310,7 +434,6 @@ public class PlayerEntity extends LivingEntity {
     }
 
     private void handleHookInput(float deltaTime) {
-        // Shoot Hook (Right Mouse Button Down)
         if (input.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT) && currentHookState == HookState.READY) {
             Vector3f rayOrigin = camera.getPosition();
             Vector3f rayDirection = camera.getForwardDirection(true);
@@ -319,13 +442,13 @@ public class PlayerEntity extends LivingEntity {
             float closestDistance = HOOK_MAX_RANGE + 0.1f;
 
             ChunkId playerChunkId = Chunk.getChunkIdAtWorldPosition(this.position);
-            // Raycast a bit further for hooks than for block breaking
             int raycastChunkRadius = (int)Math.ceil(HOOK_MAX_RANGE / Math.min(Chunk.CHUNK_SIZE_X, Math.min(Chunk.CHUNK_SIZE_Y, Chunk.CHUNK_SIZE_Z)));
             List<Block> blocksToRaycast = worldTerrain.getBlocksInRadius(playerChunkId, raycastChunkRadius);
 
             for (Block block : blocksToRaycast) {
+                if (block == null) continue;
                 CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
-                nearFarIntersection.set(0,0);
+                nearFarIntersection.set(0,Float.POSITIVE_INFINITY);
                 if (blockAABB.intersectRay(rayOrigin, rayDirection, nearFarIntersection) && nearFarIntersection.x < closestDistance) {
                     if (nearFarIntersection.x >= 0 && nearFarIntersection.x <= HOOK_MAX_RANGE) {
                         closestDistance = nearFarIntersection.x;
@@ -336,51 +459,40 @@ public class PlayerEntity extends LivingEntity {
 
             if (targetedBlock != null) {
                 hookTargetPoint = new Vector3f(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
-                activeHook = new Hook(this, worldTerrain, hookTargetPoint); // Hook starts at target point (instant for now)
+                activeHook = new Hook(this, worldTerrain, hookTargetPoint);
                 worldTerrain.addEntity(activeHook);
 
                 currentHookStringLength = this.position.distance(hookTargetPoint);
                 activeHook.attach(targetedBlock, hookTargetPoint, currentHookStringLength);
                 currentHookState = HookState.STABILIZED;
-                // System.out.println("Hook SHOT and STABILIZED at " + hookTargetPoint + " on block " + targetedBlock.getPosition() + ". Initial string length: " + currentHookStringLength);
-            } else {
-                System.out.println("Hook shot FAILED - no target block in range.");
             }
         }
 
-        // Release Hook (Right Mouse Button Up)
         if (!input.isMouseButtonDown(GLFW_MOUSE_BUTTON_RIGHT) && (currentHookState == HookState.STABILIZED || currentHookState == HookState.SHOT)) {
             if (activeHook != null) {
                 boolean wasStabilized = activeHook.isAttached();
-                activeHook.detach(); // This will set its state, mark as invalid, and call onHookReleased()
-                activeHook = null;
-                hookTargetPoint = null;
+                activeHook.detach();
 
                 if (wasStabilized) {
-                    System.out.println("Hook RELEASED from stabilized state. Applying impulse.");
                     Vector3f impulseDirection = new Vector3f(velocity).normalize();
-                    if (impulseDirection.lengthSquared() == 0 && camera != null) { // If standing still, impulse in look direction
+                    if (impulseDirection.lengthSquared() == 0 && camera != null) {
                         impulseDirection = camera.getForwardDirection(true);
                     }
                     if (impulseDirection.lengthSquared() > 0) {
-                        addVelocity(impulseDirection.mul(RELEASE_IMPULSE_MAGNITUDE));
+                        addVelocity(impulseDirection.mul(RELEASE_IMPULSE_MAGNITUDE).add(0, RELEASE_IMPULSE_MAGNITUDE, 0));
                     }
-                } else {
-                    System.out.println("Hook shot CANCELED before stabilization.");
                 }
-                // State is set to READY in onHookReleased
             } else {
-                currentHookState = HookState.READY; // Ensure state reset if no active hook for some reason
+                currentHookState = HookState.READY;
             }
         }
     }
 
-    // Called by Hook when it's detached
     public void onHookReleased() {
         this.currentHookState = HookState.READY;
-        this.currentHookStringLength = 0;
+        this.activeHook = null;
         this.hookTargetPoint = null;
-        System.out.println("Player notified: Hook ready.");
+        this.currentHookStringLength = 0;
     }
 
     private void handleHookTension(float deltaTime) {
@@ -390,50 +502,59 @@ public class PlayerEntity extends LivingEntity {
         Vector3f toHook = new Vector3f(hookTargetPoint).sub(playerPos);
         float distanceToHookTarget = toHook.length();
 
-        // Update string length if player is closer
         if (distanceToHookTarget < currentHookStringLength) {
             currentHookStringLength = distanceToHookTarget;
             activeHook.setCurrentStringLength(currentHookStringLength);
-            // System.out.println("String length shortened to: " + currentHookStringLength);
         }
 
-        // Apply tension if player is trying to exceed string length
-        if (distanceToHookTarget > currentHookStringLength + 0.01f) { // Add small tolerance
-            // System.out.println("TENSION: Player distance " + distanceToHookTarget + " > string length " + currentHookStringLength);
+        if (distanceToHookTarget > currentHookStringLength + 0.01f) {
             Vector3f pullDirection = toHook.normalize();
-
-            // Correct position to be on the sphere defined by the hook string
             Vector3f correctedPosition = new Vector3f(hookTargetPoint).sub(new Vector3f(pullDirection).mul(currentHookStringLength));
-            this.position.set(correctedPosition); // Directly set position to maintain string length constraint
 
-            // Adjust velocity: Dampen velocity component moving away from the hook
-            // Project current velocity onto the pullDirection (radial component)
-            float radialVelocityMagnitude = velocity.dot(pullDirection);
-            if (radialVelocityMagnitude > 0) { // If moving away from the hook point
-                Vector3f radialVelocity = new Vector3f(pullDirection).mul(radialVelocityMagnitude);
-                // Subtract the radial velocity component that's moving away
-                velocity.sub(radialVelocity.mul(HOOK_TENSION_CORRECTION_FACTOR)); // Apply a factor to control how "rubbery" the string is
+            // Before applying corrected position, check if it would cause player to be stuck
+            CustomAABB futurePlayerBox = localBoundingBox.translate(correctedPosition);
+            boolean wouldBeStuck = false;
+            Vector3f entityDimensions = new Vector3f(
+                    localBoundingBox.max.x - localBoundingBox.min.x,
+                    localBoundingBox.max.y - localBoundingBox.min.y,
+                    localBoundingBox.max.z - localBoundingBox.min.z
+            );
+            List<Block> collisionCandidateBlocks = worldTerrain.getBlocksForCollision(correctedPosition, entityDimensions);
+
+            for(Block block : collisionCandidateBlocks) {
+                CustomAABB blockBox = CustomAABB.forBlock(block.getPosition());
+                if (futurePlayerBox.testAABB(blockBox)) {
+                    wouldBeStuck = true;
+                    break;
+                }
             }
 
-            // If player is swinging, a simple position correction + velocity dampening might feel too rigid.
-            // A more physical approach would involve applying a spring-like force.
-            // For now, this aims to keep the player within the string's radius.
-            // System.out.println("Applied tension. New velocity: " + velocity);
-            isOnGround = false; // Tension usually means player is airborne or being pulled
+            if (wouldBeStuck) {
+                // Player would be pulled into a block. Detach hook or stop pulling.
+                System.err.println("Hook tension would pull player into block. Detaching hook.");
+                activeHook.detach(); // This will set currentHookState to READY via onHookReleased
+                return; // Stop further tension logic for this frame
+            }
+
+            // If not stuck, apply correction
+            this.position.set(correctedPosition);
+
+            float radialVelocityMagnitude = velocity.dot(pullDirection);
+            if (radialVelocityMagnitude > 0) {
+                Vector3f radialVelocity = new Vector3f(pullDirection).mul(radialVelocityMagnitude);
+                velocity.sub(radialVelocity.mul(HOOK_TENSION_CORRECTION_FACTOR));
+            }
+            isOnGround = false;
         }
-        if (currentHookStringLength < 0.5f && distanceToHookTarget < 0.6f) { // Player is very close to hook point
-            System.out.println("Player reached hook point. Releasing hook automatically.");
-            if (activeHook != null) activeHook.detach(); // Auto-release
+
+        if (currentHookStringLength < 0.5f && distanceToHookTarget < 0.6f) {
+            if (activeHook != null) activeHook.detach();
         }
     }
 
 
     @Override
     public void onBlockInteraction(Block block, Vector3f intersectionPoint, Hand hand) {
-        // Re-enable if RMB is not used for hook, or use another button for breaking
-        // if (block != null && hand == Hand.MAIN_HAND) {
-        //     worldTerrain.removeBlock(block);
-        // }
     }
 
     @Override

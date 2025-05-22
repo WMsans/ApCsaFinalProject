@@ -1,4 +1,3 @@
-// Modified: src/Main.java
 import Graphics.Renderer;
 import Graphics.Window;
 import World.Entities.PlayerEntity;
