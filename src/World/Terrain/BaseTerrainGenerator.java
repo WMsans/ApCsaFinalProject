@@ -6,11 +6,7 @@ import World.Chunk.Chunk;
 import World.Chunk.ChunkId;
 import org.joml.Vector3f;
 
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -111,9 +107,6 @@ public abstract class BaseTerrainGenerator {
                 return null;
             }
         }
-
-        // If not pending and not loaded, generate it synchronously for critical paths
-        System.out.println("Generating chunk synchronously: " + id);
         chunk = generateChunkData(id);
         if (chunk != null) {
             // chunk.getOrCreateMesh(); // Potentially long operation
@@ -134,11 +127,33 @@ public abstract class BaseTerrainGenerator {
                 // The mesh is created here, on the main thread, after data is loaded.
                 completedChunk.getOrCreateMesh();
                 chunks.put(completedChunk.getId(), completedChunk);
-                System.out.println("Chunk " + completedChunk.getId() + " processed and added to world.");
             }
         }
     }
+    public void unloadDistantChunks(ChunkId playerChunkId, int renderDistance) {
+        List<ChunkId> toUnload = new ArrayList<>();
+        int unloadDistance = renderDistance + 2; // Unload chunks a bit further than render distance to avoid rapid load/unload
 
+        for (ChunkId loadedChunkId : chunks.keySet()) {
+            int deltaX = Math.abs(loadedChunkId.x - playerChunkId.x);
+            int deltaY = Math.abs(loadedChunkId.y - playerChunkId.y); // Consider Y-axis distance if your world is very vertical
+            int deltaZ = Math.abs(loadedChunkId.z - playerChunkId.z);
+
+            // A simple square/cubic unload boundary for now
+            if (deltaX > unloadDistance || deltaZ > unloadDistance || deltaY > unloadDistance) { // Check Y-axis as well
+                toUnload.add(loadedChunkId);
+            }
+        }
+
+        for (ChunkId idToUnload : toUnload) {
+            Chunk chunkToRemove = chunks.remove(idToUnload);
+            if (chunkToRemove != null) {
+                chunkToRemove.cleanupMesh(); // Important: release GPU resources
+                requestedChunks.remove(idToUnload); // Allow it to be requested again if player moves back
+                // pendingChunks.remove(idToUnload) // Less critical here, as it's already loaded, but good for consistency
+            }
+        }
+    }
 
     //generateChunk is now generateChunkData to reflect its role in the async process
     //The abstract method for subclasses to implement is generateChunkData

@@ -169,6 +169,9 @@ public class Main implements Runnable {
             // Process any chunks that finished generating in worker threads
             terrain.processCompletedChunks();
 
+            ChunkId currentPlayerChunkId = Chunk.getChunkIdAtWorldPosition(playerEntity.getPosition()); 
+            terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks());
+
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             // Renderer will handle cases where some chunks are not yet loaded
             renderer.renderTerrain(terrain, playerEntity.getPosition());
