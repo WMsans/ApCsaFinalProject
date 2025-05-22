@@ -1,9 +1,13 @@
+// Modified: src/World/Terrain/BaseTerrainGenerator.java
 package World.Terrain;
 
 import Configuration.Config;
 import World.Block;
 import World.Chunk.Chunk;
 import World.Chunk.ChunkId;
+import World.Entities.Entity; // Added import
+import World.Entities.PlayerEntity; // Added import for player check
+
 import org.joml.Vector3f;
 
 import java.util.*;
@@ -12,11 +16,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList; // Added import
 
 public abstract class BaseTerrainGenerator {
     protected final Map<ChunkId, Chunk> chunks;
     protected final Config config;
+    protected final List<Entity> entities; // Added to manage entities
 
     // For asynchronous chunk generation
     private final ExecutorService chunkExecutor;
@@ -27,6 +32,7 @@ public abstract class BaseTerrainGenerator {
     public BaseTerrainGenerator(Config config) {
         this.chunks = new ConcurrentHashMap<>(); // Use ConcurrentHashMap for thread safety
         this.config = config;
+        this.entities = new CopyOnWriteArrayList<>(); // Initialize entity list
         Chunk.setChunkDimensions(config.getChunkSizeX(), config.getChunkSizeY(), config.getChunkSizeZ());
 
         // Initialize components for asynchronous generation
@@ -125,22 +131,21 @@ public abstract class BaseTerrainGenerator {
         while ((completedChunk = completedChunksQueue.poll()) != null) {
             if (!chunks.containsKey(completedChunk.getId())) {
                 // The mesh is created here, on the main thread, after data is loaded.
-                completedChunk.getOrCreateMesh();
+                completedChunk.getOrCreateMesh(); // Ensure mesh is ready before being added to active chunks
                 chunks.put(completedChunk.getId(), completedChunk);
             }
         }
     }
-    public void unloadDistantChunks(ChunkId playerChunkId, int renderDistance) {
+    public void unloadDistantChunks(ChunkId playerChunkId, int renderDistance, PlayerEntity playerToKeep) {
         List<ChunkId> toUnload = new ArrayList<>();
-        int unloadDistance = renderDistance + 2; // Unload chunks a bit further than render distance to avoid rapid load/unload
+        int unloadDistance = renderDistance + 2; // Unload chunks a bit further than render distance
 
         for (ChunkId loadedChunkId : chunks.keySet()) {
             int deltaX = Math.abs(loadedChunkId.x - playerChunkId.x);
-            int deltaY = Math.abs(loadedChunkId.y - playerChunkId.y); // Consider Y-axis distance if your world is very vertical
+            int deltaY = Math.abs(loadedChunkId.y - playerChunkId.y);
             int deltaZ = Math.abs(loadedChunkId.z - playerChunkId.z);
 
-            // A simple square/cubic unload boundary for now
-            if (deltaX > unloadDistance || deltaZ > unloadDistance || deltaY > unloadDistance) { // Check Y-axis as well
+            if (deltaX > unloadDistance || deltaZ > unloadDistance || deltaY > unloadDistance) {
                 toUnload.add(loadedChunkId);
             }
         }
@@ -148,21 +153,27 @@ public abstract class BaseTerrainGenerator {
         for (ChunkId idToUnload : toUnload) {
             Chunk chunkToRemove = chunks.remove(idToUnload);
             if (chunkToRemove != null) {
-                chunkToRemove.cleanupMesh(); // Important: release GPU resources
-                requestedChunks.remove(idToUnload); // Allow it to be requested again if player moves back
-                // pendingChunks.remove(idToUnload) // Less critical here, as it's already loaded, but good for consistency
+                chunkToRemove.cleanupMesh();
+                requestedChunks.remove(idToUnload);
             }
         }
+
+        // Unload entities in unloaded chunks (excluding the player)
+        List<Entity> entitiesToRemove = new ArrayList<>();
+        for (Entity entity : entities) {
+            if (entity == playerToKeep) { // Do not unload the player
+                continue;
+            }
+            ChunkId entityChunkId = entity.getChunkId();
+            if (!chunks.containsKey(entityChunkId) && toUnload.contains(entityChunkId)) { // If entity's chunk was unloaded
+                entity.kill(); // Mark for removal
+                entitiesToRemove.add(entity);
+                System.out.println("Unloading entity " + entity.getId() + " as its chunk " + entityChunkId + " was unloaded.");
+            }
+        }
+        entities.removeAll(entitiesToRemove); // Efficiently remove all marked entities
     }
 
-    //generateChunk is now generateChunkData to reflect its role in the async process
-    //The abstract method for subclasses to implement is generateChunkData
-    //For example, in SimpleTerrain, NetherTerrain, CryoPeakWildsTerrain,
-    //rename `protected void generateChunk(ChunkId chunkId)` to `protected Chunk generateChunkData(ChunkId chunkId)`
-    //and change its return type from void to Chunk, returning the `newChunk`.
-
-    // Existing methods like getOrCreateChunk, addBlock, etc., remain largely the same,
-    // but their reliance on getChunk means they now participate in the async flow.
 
     public Chunk getOrCreateChunk(ChunkId id) {
         return getChunk(id); // Will use the async version
@@ -185,8 +196,6 @@ public abstract class BaseTerrainGenerator {
         if (chunk != null) {
             chunk.addBlock(block); // This will set needsMeshRebuild = true
         } else {
-            // block can't be added if chunk doesn't exist yet.
-            // Or, queue this modification until the chunk is loaded. For now, we'll ignore.
             System.err.println("Attempted to add block to a non-loaded chunk: " + chunkId);
         }
     }
@@ -206,7 +215,8 @@ public abstract class BaseTerrainGenerator {
         Chunk chunk = chunks.get(chunkId);
         if (chunk != null) {
             Block toRemove = null;
-            for (Block b : new java.util.ArrayList<>(chunk.getModifiableBlocks())) {
+            // Iterate over a copy if concurrent modification is an issue, or ensure single-threaded access here
+            for (Block b : new ArrayList<>(chunk.getModifiableBlocks())) {
                 if (b.getPosition().distanceSquared(worldPosition) < 0.001f) {
                     toRemove = b;
                     break;
@@ -224,6 +234,7 @@ public abstract class BaseTerrainGenerator {
         Chunk chunk = chunks.get(chunkId); // Check only fully loaded chunks
         if (chunk != null) {
             for (Block block : chunk.getBlocks()) {
+                // Ensure block positions are exact or use a small tolerance for floating point comparison
                 if (block.getPosition().distanceSquared(worldPosition) < 0.001f) {
                     return true;
                 }
@@ -243,8 +254,9 @@ public abstract class BaseTerrainGenerator {
         ChunkId minChunkId = Chunk.getChunkIdAtWorldPosition(entityMinCorner);
         ChunkId maxChunkId = Chunk.getChunkIdAtWorldPosition(entityMaxCorner);
 
+        // Iterate an expanded area of chunks: current chunk and immediate neighbors
         for (int cx = minChunkId.x - 1; cx <= maxChunkId.x + 1; cx++) {
-            for (int cy = minChunkId.y - 1; cy <= maxChunkId.y + 1; cy++) {
+            for (int cy = minChunkId.y - 1; cy <= maxChunkId.y + 1; cy++) { // Consider Y dimension for collision
                 for (int cz = minChunkId.z - 1; cz <= maxChunkId.z + 1; cz++) {
                     ChunkId currentChunkId = new ChunkId(cx, cy, cz);
                     if (checkedChunkIds.add(currentChunkId)) {
@@ -262,7 +274,7 @@ public abstract class BaseTerrainGenerator {
     public List<Block> getBlocksInRadius(ChunkId centerChunkId, int radiusInChunks) {
         List<Block> blocksInRadius = new java.util.ArrayList<>();
         for (int dx = -radiusInChunks; dx <= radiusInChunks; dx++) {
-            for (int dy = -radiusInChunks; dy <= radiusInChunks; dy++) {
+            for (int dy = -radiusInChunks; dy <= radiusInChunks; dy++) { // Consider Y dimension
                 for (int dz = -radiusInChunks; dz <= radiusInChunks; dz++) {
                     ChunkId currentId = new ChunkId(centerChunkId.x + dx, centerChunkId.y + dy, centerChunkId.z + dz);
                     Chunk chunk = chunks.get(currentId); // Only use fully loaded chunks
@@ -278,6 +290,38 @@ public abstract class BaseTerrainGenerator {
     public List<Chunk> getAllLoadedChunks() {
         return new java.util.ArrayList<>(chunks.values());
     }
+
+    // Entity Management Methods
+    public void addEntity(Entity entity) {
+        if (entity != null && !entities.contains(entity)) {
+            entities.add(entity);
+        }
+    }
+
+    public void removeEntity(Entity entity) {
+        if (entity != null) {
+            entity.kill(); // Mark as invalid
+            entities.remove(entity); // Remove from list
+        }
+    }
+
+    public void updateEntities(float deltaTime, float currentTime) {
+        List<Entity> toRemove = null;
+        for (Entity entity : entities) {
+            if (!entity.isValid()) {
+                if (toRemove == null) {
+                    toRemove = new ArrayList<>();
+                }
+                toRemove.add(entity);
+            } else {
+                entity.update(deltaTime, currentTime);
+            }
+        }
+        if (toRemove != null) {
+            entities.removeAll(toRemove);
+        }
+    }
+
 
     public void cleanup() {
         chunkExecutor.shutdown();
@@ -296,5 +340,10 @@ public abstract class BaseTerrainGenerator {
         pendingChunks.clear();
         completedChunksQueue.clear();
         requestedChunks.clear();
+
+        for (Entity entity : entities) { // Cleanup entities
+            entity.kill();
+        }
+        entities.clear();
     }
 }

@@ -1,3 +1,4 @@
+// Modified: src/Main.java
 import Graphics.Renderer;
 import Graphics.Window;
 import World.Entities.PlayerEntity;
@@ -69,55 +70,71 @@ public class Main implements Runnable {
 
     private Vector3f findSafeSpawnLocation() {
         int renderDist = config.getRenderDistanceInChunks();
-        int chunkSearchRadius = Math.max(1, renderDist / 2);
+        int chunkSearchRadius = Math.max(1, renderDist / 2); // Search within a smaller radius for performance
         Vector3f bestSpawnPoint = null;
         float highestGroundFound = -Float.MAX_VALUE;
 
         System.out.println("Finding safe spawn: Pre-generating initial chunks synchronously...");
-        // Pre-generate chunks synchronously for spawn search
+        // Pre-generate chunks synchronously for spawn search.
+        // Search a wider vertical range to ensure ground is found.
+        // Assuming chunk Y IDs can be negative or positive depending on world structure.
+        // For SimpleTerrain, Y usually starts from 0 upwards. For Nether, it's more varied.
+        // Let's assume world height is somewhat centered around Y=0 for chunk IDs, or adjust as needed.
+        // Max world height in chunks could be estimated or configured. For now, search a reasonable range.
+        int maxChunkY = (int)Math.ceil( (256.0 / Chunk.CHUNK_SIZE_Y) /2.0) ; // Example: if world max Y is 256
+        int minChunkY = -maxChunkY;
+
+
         for (int dx = -chunkSearchRadius; dx <= chunkSearchRadius; dx++) {
             for (int dz = -chunkSearchRadius; dz <= chunkSearchRadius; dz++) {
-                for (int dy = config.getChunkSizeY() / Chunk.CHUNK_SIZE_Y + 2; dy >= -2; dy--) {
-                    terrain.getChunkSynchronous(new ChunkId(dx, dy, dz)); // Use synchronous getter
+                for (int dy = maxChunkY + 2; dy >= minChunkY -2 ; dy--) { // Iterate downwards through chunk Y IDs
+                    terrain.getChunkSynchronous(new ChunkId(dx, dy, dz));
                 }
             }
         }
-        // Process any chunks that might have been queued by getChunkSynchronous (though it aims to be sync)
-        terrain.processCompletedChunks();
+        terrain.processCompletedChunks(); // Process any stragglers, though getChunkSynchronous should be blocking
         System.out.println("Initial chunks for spawn search processed.");
 
 
+        // Search for a spawnable block column by column
+        // World X and Z from -searchRadius*ChunkSize to +searchRadius*ChunkSize
         for (int x = -chunkSearchRadius * Chunk.CHUNK_SIZE_X; x < chunkSearchRadius * Chunk.CHUNK_SIZE_X; x++) {
             for (int z = -chunkSearchRadius * Chunk.CHUNK_SIZE_Z; z < chunkSearchRadius * Chunk.CHUNK_SIZE_Z; z++) {
-                for (int y = config.getChunkSizeY() + Chunk.CHUNK_SIZE_Y * 2; y >= 0; y--) {
+                // Search from a reasonable max height downwards. Configurable or based on world gen.
+                // Max height could be config.chunkSizeY * (maxChunkY + 1)
+                for (int y = Chunk.CHUNK_SIZE_Y * (maxChunkY +1) ; y >= Chunk.CHUNK_SIZE_Y * minChunkY; y--) {
                     Vector3f currentPoint = new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
-                    // isBlockAt will now only check fully loaded chunks
                     if (terrain.isBlockAt(currentPoint)) {
-                        if (y > highestGroundFound) {
-                            boolean spaceClear = true;
-                            for (int i = 1; i <= 5; i++) {
-                                if (terrain.isBlockAt(new Vector3f(x + 0.5f, y + i + 0.5f, z + 0.5f))) {
-                                    spaceClear = false;
-                                    break;
-                                }
+                        // Found a block, check if space above is clear for player
+                        boolean spaceClear = true;
+                        // Player height is approx 1.8f, check 2 blocks above + eye height buffer
+                        for (int i = 1; i <= 2; i++) { // Check two blocks directly above
+                            if (terrain.isBlockAt(new Vector3f(x + 0.5f, y + i + 0.5f, z + 0.5f))) {
+                                spaceClear = false;
+                                break;
                             }
-                            if (spaceClear) {
+                        }
+                        if (spaceClear) {
+                            // This is a potential spawn surface. Choose the highest one.
+                            if (y > highestGroundFound) {
                                 highestGroundFound = y;
+                                // Player spawns on top of this block (y+1), centered.
                                 bestSpawnPoint = new Vector3f(x + 0.5f, y + 1.0f + 0.5f, z + 0.5f);
                             }
                         }
-                        break;
+                        break; // Found the highest solid block in this (x,z) column, move to next column
                     }
                 }
             }
         }
+
 
         if (bestSpawnPoint != null) {
             System.out.println("Found safe spawn at: " + bestSpawnPoint);
             return new Vector3f(bestSpawnPoint.x, bestSpawnPoint.y, bestSpawnPoint.z);
         } else {
             System.err.println("Could not find a safe spawn location. Defaulting to high up.");
-            return new Vector3f(0, config.getChunkSizeY() + 100.0f, 0);
+            return new Vector3f(0, Chunk.CHUNK_SIZE_Y * (maxChunkY + 2) + 10.0f, 0); // Default spawn if no safe spot found
         }
     }
 
@@ -128,28 +145,30 @@ public class Main implements Runnable {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        config = new Config("Configuration/config.properties");
+        config = new Config("Configuration/config.properties"); // Load config first
 
         window = new Window(windowTitle, initialWidth, initialHeight);
         window.create();
         input = new Input(window.getWindowHandle());
 
         glfwMakeContextCurrent(window.getWindowHandle());
-        glfwSwapInterval(1);
+        glfwSwapInterval(1); // Enable v-sync
         glfwShowWindow(window.getWindowHandle());
-        GL.createCapabilities();
+        GL.createCapabilities(); // IMPORTANT: Create OpenGL capabilities AFTER context is current
 
-        glClearColor(0.1f, 0.1f, 0.15f, 0.0f);
+        glClearColor(0.1f, 0.1f, 0.15f, 0.0f); // Dark blueish-grey background
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
-        terrain = GetTerrainGenerator(); // Terrain generator is now capable of async
+        terrain = GetTerrainGenerator(); // Initialize terrain generator
 
-        Vector3f playerStartPosition = findSafeSpawnLocation();
+        // Player needs to be initialized after terrain and config.
+        Vector3f playerStartPosition = findSafeSpawnLocation(); // Find spawn *after* terrain is ready
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
+        terrain.addEntity(playerEntity); // Add player to terrain's entity list
 
-        renderer = new Renderer(playerEntity.getCamera(), config);
+        renderer = new Renderer(playerEntity.getCamera(), config); // Graphics.Renderer needs camera and config
     }
 
     private void loop() {
@@ -161,40 +180,44 @@ public class Main implements Runnable {
             deltaTime = currentTime - lastTime;
             lastTime = currentTime;
 
+            // Cap delta time to prevent unusually large jumps (e.g., after a breakpoint)
             if (deltaTime > 0.1f) deltaTime = 0.1f;
-            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f;
+            // Ensure deltaTime is not zero or negative if time reverses or stalls
+            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f; // Default to 60 FPS if issues
 
-            input.pollEvents();
+            input.pollEvents(); // Process GLFW events and update input states
 
             if (input.isKeyPressed(GLFW_KEY_ESCAPE)) {
                 glfwSetWindowShouldClose(window.getWindowHandle(), true);
             }
 
-            playerEntity.update(deltaTime, currentTime);
+            // Update all entities managed by the terrain system (including player)
+            terrain.updateEntities(deltaTime, currentTime);
 
             // Process any chunks that finished generating in worker threads
             terrain.processCompletedChunks();
 
+            // Unload distant chunks and their entities (excluding player)
             ChunkId currentPlayerChunkId = Chunk.getChunkIdAtWorldPosition(playerEntity.getPosition());
-            terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks());
+            terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks(), playerEntity);
 
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderer.renderTerrain(terrain, playerEntity.getPosition());
-            window.swapBuffers();
-            glfwPollEvents();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear screen
+            renderer.renderTerrain(terrain, playerEntity.getPosition()); // Render terrain and entities via renderer
+            window.swapBuffers(); // Display rendered frame
+            glfwPollEvents(); // Check for window events (like close button)
         }
     }
 
     private void cleanup() {
         if (renderer != null) renderer.cleanup();
-        if (terrain != null) terrain.cleanup(); // This will now also shutdown the ExecutorService
+        if (terrain != null) terrain.cleanup(); // This will also shutdown the ExecutorService and clear entities
 
         if (window != null && window.getWindowHandle() != NULL) {
-            glfwFreeCallbacks(window.getWindowHandle());
-            glfwDestroyWindow(window.getWindowHandle());
+            glfwFreeCallbacks(window.getWindowHandle()); // Release callbacks
+            glfwDestroyWindow(window.getWindowHandle()); // Destroy window
         }
-        glfwTerminate();
-        GLFWErrorCallback callback = glfwSetErrorCallback(null);
+        glfwTerminate(); // Terminate GLFW
+        GLFWErrorCallback callback = glfwSetErrorCallback(null); // Release error callback
         if (callback != null) callback.free();
     }
 }

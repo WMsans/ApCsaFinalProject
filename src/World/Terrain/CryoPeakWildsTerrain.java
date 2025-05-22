@@ -33,9 +33,8 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
     // Color strategy from NetherTerrain
     private static final Vector3f[] TERRAIN_COLORS = {
             new Vector3f(0.545f, 0.118f, 1.0f), // #8c1eff
-            new Vector3f(0.949f, 0.133f, 1.0f), // #f222ff
-            new Vector3f(1.0f, 0.161f, 0.459f), // #ff2975
-            new Vector3f(1.0f, 0.565f, 0.122f)  // #ff901f
+            new Vector3f(1.0f, 0.565f, 0.122f), // #ff901f
+            new Vector3f(0.1f, 0.1f, 0.85f)     // #2f1cd9
     };
     private static final int COLOR_TRANSITION_RANGE_Y = 10;
 

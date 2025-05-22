@@ -55,8 +55,8 @@ public class PlayerEntity extends LivingEntity {
     private Vector3f hookTargetPoint = null; // Point on block where hook is aimed/attached
     private float currentHookStringLength = 0.0f;
 
-    private final float HOOK_MAX_RANGE = 30.0f; // Max distance hook can be shot
-    private final float GAS_FORCE_MAGNITUDE = 25.0f; // Force applied when releasing gas
+    private final float HOOK_MAX_RANGE = 128.0f; // Max distance hook can be shot
+    private final float GAS_FORCE_MAGNITUDE = 275.0f; // Force applied when releasing gas
     private final float RELEASE_IMPULSE_MAGNITUDE = 15.0f; // Impulse when releasing a stabilized hook
     private final float HOOK_TENSION_CORRECTION_FACTOR = 0.8f; // How strongly to correct position/velocity due to tension
 
@@ -96,7 +96,7 @@ public class PlayerEntity extends LivingEntity {
         handleKeyboardMovement(deltaTime); // Handles walking, flying, and now gas release
         // handleBlockInteractionInput(); // Original block breaking/placing logic - now replaced by hook
 
-        super.update(deltaTime); // Entity.update -> applyGravity, moveEntity, updateLogic
+        super.update(deltaTime, currentTime); // Entity.update -> applyGravity, moveEntity, updateLogic
 
         if (currentHookState == HookState.STABILIZED && activeHook != null && activeHook.isAttached()) {
             handleHookTension(deltaTime);
@@ -256,7 +256,10 @@ public class PlayerEntity extends LivingEntity {
         if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED) {
             System.out.println("Player trying to release gas.");
             Vector3f gasForceDirection = camera.getForwardDirection(true); // Gas propels in camera's facing direction
-            addVelocity(gasForceDirection.mul(GAS_FORCE_MAGNITUDE * deltaTime)); // Apply as acceleration over time
+            // Add an upward component to the gas force
+            Vector3f upwardForce = new Vector3f(0, 0.3f, 0); // Define upward vector
+            Vector3f combinedGasForce = new Vector3f(gasForceDirection).add(upwardForce).normalize(); // Combine and normalize
+            addVelocity(combinedGasForce.mul(GAS_FORCE_MAGNITUDE * deltaTime)); // Apply as acceleration over time
             // Tension will be handled by handleHookTension
         } else if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState != HookState.STABILIZED) {
             //System.out.println("Gas release attempted but hook not stabilized or player on ground.");
@@ -334,7 +337,7 @@ public class PlayerEntity extends LivingEntity {
             if (targetedBlock != null) {
                 hookTargetPoint = new Vector3f(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
                 activeHook = new Hook(this, worldTerrain, hookTargetPoint); // Hook starts at target point (instant for now)
-                worldTerrain.addEntity(activeHook); // Add hook to world (if your terrain/world manager handles entities)
+                worldTerrain.addEntity(activeHook);
 
                 currentHookStringLength = this.position.distance(hookTargetPoint);
                 activeHook.attach(targetedBlock, hookTargetPoint, currentHookStringLength);

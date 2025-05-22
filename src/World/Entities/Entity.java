@@ -1,10 +1,13 @@
+// Modified: src/World/Entities/Entity.java
 package World.Entities;
 
 import Inventory.Hand;
 import Physics.CustomAABB;
 import World.Block;
 import World.Terrain.BaseTerrainGenerator;
-import World.Terrain.NetherTerrain; // Will use Terrain's new methods
+// import World.Terrain.NetherTerrain; // Will use Terrain's new methods // This import seems unused here
+import World.Chunk.Chunk; // Added for Chunk.getChunkIdAtWorldPosition
+import World.Chunk.ChunkId; // Added for getChunkId return type
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.util.UUID;
@@ -44,12 +47,12 @@ public abstract class Entity {
         );
     }
 
-    public void update(float deltaTime) {
+    public void update(float deltaTime, float currentTime) { // Added currentTime to match PlayerEntity and allow flexibility
         if (!isValid) return;
 
         applyGravity(deltaTime);
         moveEntity(deltaTime);
-        updateLogic(deltaTime);
+        updateLogic(deltaTime); // updateLogic generally doesn't need currentTime, but could be added if specific entities need it
     }
 
     protected void applyGravity(float deltaTime) {
@@ -191,16 +194,18 @@ public abstract class Entity {
                     break;
                 }
             }
+            if (groundDetectedThisCheck) break; // Optimization: if one ray hits ground, entity is grounded
         }
 
         if (groundDetectedThisCheck) {
-            if (velocity.y <= 0.01f && Math.abs(position.y - highestLandingY) < (checkRayLength + COLLISION_SKIN_WIDTH * 2.0f)) { // Increased tolerance slightly for snapping
+            // Only snap if the entity is very close to or slightly below the detected ground, and moving downwards or still
+            if (velocity.y <= 0.01f && Math.abs(position.y - highestLandingY) < (checkRayLength + COLLISION_SKIN_WIDTH * 2.0f)) {
                 position.y = highestLandingY;
-                if (velocity.y < 0) velocity.y = 0;
+                if (velocity.y < 0) velocity.y = 0; // Stop downward velocity if snapped
             }
             isOnGround = true;
         } else {
-            isOnGround = (velocity.y > 0) ? false : false; // If not moving up, and no ground, then not on ground.
+            isOnGround = (velocity.y > 0); // If moving up, definitely not on ground. If static or moving down with no detection, not on ground.
         }
     }
 
@@ -222,7 +227,7 @@ public abstract class Entity {
 
     public void addVelocity(Vector3f additionalVelocity) {
         this.velocity.add(additionalVelocity);
-        if (additionalVelocity.lengthSquared() > 0) {
+        if (additionalVelocity.lengthSquared() > 0) { // Any velocity addition might lift off ground
             this.isOnGround = false;
         }
     }
@@ -243,7 +248,6 @@ public abstract class Entity {
 
     public CustomAABB getBoundingBoxWorld() {
         // Translates the local AABB to the entity's current world position.
-        // Assumes localBoundingBox min/max are relative to (0,0,0) and position is the center.
         return localBoundingBox.translate(position);
     }
 
@@ -251,6 +255,10 @@ public abstract class Entity {
     public float getPitch() { return pitch; }
     public void setYaw(float yaw) { this.yaw = yaw; }
     public void setPitch(float pitch) { this.pitch = pitch; }
+
+    public ChunkId getChunkId() {
+        return Chunk.getChunkIdAtWorldPosition(this.position.x, this.position.y, this.position.z);
+    }
 
     public abstract void onBlockInteraction(Block block, Vector3f intersectionPoint, Hand hand);
     public abstract void onEntityInteraction(Entity target, Hand hand);
