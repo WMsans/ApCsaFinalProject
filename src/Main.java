@@ -74,12 +74,6 @@ public class Main implements Runnable {
         float highestGroundFound = -Float.MAX_VALUE;
 
         System.out.println("Finding safe spawn: Pre-generating initial chunks synchronously...");
-        // Pre-generate chunks synchronously for spawn search.
-        // Search a wider vertical range to ensure ground is found.
-        // Assuming chunk Y IDs can be negative or positive depending on world structure.
-        // For SimpleTerrain, Y usually starts from 0 upwards. For Nether, it's more varied.
-        // Let's assume world height is somewhat centered around Y=0 for chunk IDs, or adjust as needed.
-        // Max world height in chunks could be estimated or configured. For now, search a reasonable range.
         int maxChunkY = (int)Math.ceil( (256.0 / Chunk.CHUNK_SIZE_Y) /2.0) ; // Example: if world max Y is 256
         int minChunkY = -maxChunkY;
 

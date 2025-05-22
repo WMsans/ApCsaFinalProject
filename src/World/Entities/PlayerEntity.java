@@ -44,6 +44,8 @@ public class PlayerEntity extends LivingEntity {
     private float lastSpacePressTime = -1.0f;
     private final float DOUBLE_SPACE_PRESS_INTERVAL = 0.3f;
 
+    private float lastReleaseGameTime = -1.0f;
+
     // Hook related fields
     private enum HookState {
         READY,      // Can shoot a new hook
@@ -64,6 +66,7 @@ public class PlayerEntity extends LivingEntity {
     private final float SIMILAR_DIRECTION_THRESHOLD = 0.7f; // Cosine of angle for speed retention logic (e.g., > cos(45 deg))
     private static final int MAX_STUCK_RECOVERY_ATTEMPTS = 16; // Max attempts to find a safe spot
     private static final float STUCK_RECOVERY_SEARCH_RADIUS_INCREMENT = 0.5f; // How much to expand search radius each attempt
+    private static final float RELEASE_GAS_TIME = 0.5f; // Time between applying gas impulse
 
 
     public PlayerEntity(Input input, Window window, BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Config config) {
@@ -99,7 +102,7 @@ public class PlayerEntity extends LivingEntity {
             jumpKeyHeld = false;
         }
 
-        handleKeyboardMovement(deltaTime); // This updates velocity based on input
+        handleKeyboardMovement(deltaTime,currentTime); // This updates velocity based on input
 
         // Hook tension can also affect velocity and position
         if (currentHookState == HookState.STABILIZED && activeHook != null && activeHook.isAttached()) {
@@ -299,11 +302,11 @@ public class PlayerEntity extends LivingEntity {
         }
     }
 
-    private void handleKeyboardMovement(float deltaTime) {
+    private void handleKeyboardMovement(float deltaTime, float currentTime) {
         if (isFlying && config.isDebugFlyModeEnabled()) {
             handleFlyingMovement(deltaTime);
         } else {
-            handleWalkingAndGasMovement(deltaTime);
+            handleWalkingAndGasMovement(deltaTime, currentTime);
         }
     }
 
@@ -327,7 +330,7 @@ public class PlayerEntity extends LivingEntity {
         isOnGround = false;
     }
 
-    private void handleWalkingAndGasMovement(float deltaTime) {
+    private void handleWalkingAndGasMovement(float deltaTime, float currentTime) {
         Vector3f inputDir = new Vector3f(0,0,0);
         Vector3f forwardXZ = new Vector3f((float)Math.cos(Math.toRadians(this.yaw)), 0, (float)Math.sin(Math.toRadians(this.yaw))).normalize();
         Vector3f rightXZ = new Vector3f((float)Math.cos(Math.toRadians(this.yaw + 90)), 0, (float)Math.sin(Math.toRadians(this.yaw + 90))).normalize();
@@ -385,14 +388,15 @@ public class PlayerEntity extends LivingEntity {
             velocity.z += changeZ;
         }
 
-        if(input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying){
+        if(input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying && currentTime - lastReleaseGameTime > RELEASE_GAS_TIME){
             System.out.println("Player applying gas impulse on space press.");
             Vector3f camForward = camera.getForwardDirection(true);
-            addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(0, GAS_IMPULSE_ON_PRESS_MAGNITUDE, 0));
+            addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(activeHook.getAttachedPoint().sub(getPosition()).normalize().mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE)));
 
             isOnGround = false;
             coyoteTimer = 0;
             jumpBufferTimer = 0;
+            lastReleaseGameTime = currentTime;
         }
 
         if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED && !isFlying) {
