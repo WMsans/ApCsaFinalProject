@@ -160,28 +160,6 @@ public class PlayerEntity extends LivingEntity {
         }
         this.camera.setRoll(currentCameraRoll);
 
-        // Stuck check and recovery
-        if (isStuck()) {
-            System.err.println("Player is stuck! Attempting recovery...");
-            Vector3f safeSpot = findNearestSafeSpot();
-            if (safeSpot != null) {
-                System.out.println("Found safe spot at: " + safeSpot + ". Teleporting.");
-                teleport(safeSpot);
-                velocity.zero(); // Reset velocity after teleporting from a stuck state
-                isOnGround = false; // Re-evaluate ground state after teleport
-                // Immediately check if the new spot is actually safe to avoid teleport loops.
-                if (isStuck()) {
-                    System.err.println("Teleported to a new spot but still stuck. Emergency fallback to high up.");
-                    teleport(new Vector3f(position.x, position.y + Chunk.CHUNK_SIZE_Y * 2, position.z)); // Default to high up
-                }
-            } else {
-                System.err.println("Could not find a safe spot to recover. Player remains stuck.");
-                // As a last resort, could teleport player to a known "world origin" or last safe hub.
-                teleport(new Vector3f(position.x, position.y + Chunk.CHUNK_SIZE_Y * 3, position.z)); // Default to high up
-            }
-        }
-
-
         Vector3f currentEyePosition = new Vector3f(this.position).add(0, getEyeHeight(), 0);
         this.camera.setPosition(currentEyePosition);
         this.camera.setYaw(this.yaw);
@@ -354,8 +332,8 @@ public class PlayerEntity extends LivingEntity {
     private void handleFlyingMovement(float deltaTime) {
         velocity.zero();
         Vector3f flyDirection = new Vector3f(0,0,0);
-        Vector3f camForward = camera.getForwardDirection(true);
-        Vector3f camRight = camera.getRightDirection(true);
+        Vector3f camForward = camera.getForwardDirection(false);
+        Vector3f camRight = camera.getRightDirection(false);
 
         if (input.isKeyDown(GLFW_KEY_W)) flyDirection.add(camForward);
         if (input.isKeyDown(GLFW_KEY_S)) flyDirection.sub(camForward);
