@@ -17,8 +17,15 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
     private final FastNoiseLite pillarNoise;
     private final Random random;
 
-    private static final float BASE_TERRAIN_HEIGHT = 20.0f;
-    private static final float BASE_TERRAIN_AMPLITUDE = 32.0f;
+    // Constants for new dramatic height calculation
+    private static final float FLAT_LOW_LEVEL = 10.0f;
+    private static final float PEAK_HIGH_LEVEL = 40.0f;
+    private static final float DRAMATIC_THRESHOLD_LOW = 0f;
+    private static final float DRAMATIC_THRESHOLD_HIGH = 0.3f;
+    private static final float LOW_VARIATION_AMP = 5.0f;
+    private static final float HIGH_VARIATION_AMP = 5.0f;
+
+
     private static final float PILLAR_THRESHOLD = 0.6f; // Noise value above which pillars generate
     private static final float PILLAR_MIN_HEIGHT = 15.0f;
     private static final float PILLAR_AMPLITUDE = 150.0f; // Max additional height for pillars
@@ -76,7 +83,22 @@ public class CryoPeakWildsTerrain extends BaseTerrainGenerator {
 
                 // Generate base terrain height
                 float baseHeightNoiseVal = baseNoise.GetNoise(worldX, worldZ); // -1 to 1
-                float currentBaseSurfaceY = BASE_TERRAIN_HEIGHT + baseHeightNoiseVal * BASE_TERRAIN_AMPLITUDE;
+                float currentBaseSurfaceY;
+
+                if (baseHeightNoiseVal < DRAMATIC_THRESHOLD_LOW) {
+                    // Normalize noise in the range [-1, DRAMATIC_THRESHOLD_LOW) to [0, 1)
+                    float t = (baseHeightNoiseVal - (-1.0f)) / (DRAMATIC_THRESHOLD_LOW - (-1.0f));
+                    currentBaseSurfaceY = FLAT_LOW_LEVEL + t * LOW_VARIATION_AMP;
+                } else if (baseHeightNoiseVal <= DRAMATIC_THRESHOLD_HIGH) {
+                    // Normalize noise in the range [DRAMATIC_THRESHOLD_LOW, DRAMATIC_THRESHOLD_HIGH] to [0, 1]
+                    float t = (baseHeightNoiseVal - DRAMATIC_THRESHOLD_LOW) / (DRAMATIC_THRESHOLD_HIGH - DRAMATIC_THRESHOLD_LOW);
+                    currentBaseSurfaceY = FLAT_LOW_LEVEL + t * (PEAK_HIGH_LEVEL - FLAT_LOW_LEVEL);
+                } else { // baseHeightNoiseVal > DRAMATIC_THRESHOLD_HIGH
+                    // Normalize noise in the range (DRAMATIC_THRESHOLD_HIGH, 1] to (0, 1]
+                    float t = (baseHeightNoiseVal - DRAMATIC_THRESHOLD_HIGH) / (1.0f - DRAMATIC_THRESHOLD_HIGH);
+                    currentBaseSurfaceY = PEAK_HIGH_LEVEL + t * HIGH_VARIATION_AMP;
+                }
+
 
                 // Generate pillar noise
                 float pillarPlacementNoiseVal = (pillarNoise.GetNoise(worldX, worldZ) + 1) / 2f; // 0 to 1
