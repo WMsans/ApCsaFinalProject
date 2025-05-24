@@ -184,7 +184,7 @@ public class Main implements Runnable {
 
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderer.renderTerrain(terrain, playerEntity.getPosition());
-            renderer.renderEntities(currentEntities, playerEntity.getCamera()); // Render all valid entities with models
+            renderer.renderEntities(currentEntities, playerEntity.getCamera(), playerEntity);
             window.swapBuffers();
             glfwPollEvents();
         }

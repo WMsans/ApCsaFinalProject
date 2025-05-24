@@ -6,7 +6,7 @@ import Physics.CustomAABB;
 import World.*;
 import World.Chunk.*;
 import World.Entities.Entity;
-import World.Entities.Hook; // Import Hook
+import World.Entities.Hook;
 import World.Entities.LivingEntity;
 import World.Terrain.BaseTerrainGenerator;
 import org.joml.Vector2f;
@@ -63,8 +63,8 @@ public class PlayerEntity extends LivingEntity {
     private float currentHookStringLength = 0.0f;
 
     private final float HOOK_MAX_RANGE = 128.0f; // Max distance hook can be shot
-    private final float GAS_FORCE_MAGNITUDE = 50.0f; // Force applied when RELEASING gas (continuous)
-    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 12.0f; // Impulse when PRESSING space with hook (NEW)
+    private final float GAS_FORCE_MAGNITUDE = 60.0f; // Force applied when RELEASING gas (continuous)
+    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 14.0f; // Impulse when PRESSING space with hook (NEW)
     private final float RELEASE_IMPULSE_MAGNITUDE = 18.0f; // Impulse when RELEASING a stabilized hook
     private final float HOOK_TENSION_CORRECTION_FACTOR = 0.8f; // How strongly to correct position/velocity due to tension
     private final float SIMILAR_DIRECTION_THRESHOLD = 0.7f; // Cosine of angle for speed retention logic (e.g., > cos(45 deg))
@@ -579,6 +579,12 @@ public class PlayerEntity extends LivingEntity {
         }
     }
 
+    public Hook getActiveHook() {
+        if (currentHookState == HookState.STABILIZED || currentHookState == HookState.SHOT) {
+            return activeHook;
+        }
+        return null;
+    }
 
     @Override
     public void onBlockInteraction(Block block, Vector3f intersectionPoint, Hand hand) {

@@ -25,7 +25,6 @@ public class Config {
 
     // Lighting Parameters
     public float gamma;
-    // public Vector3f lightPosition; // REMOVE this line
 
     // World/Chunk Parameters
     public int chunkSizeX;
@@ -35,6 +34,9 @@ public class Config {
 
     // Debug Parameters
     public boolean flyMode;
+
+    // Graphics Parameters
+    public float hookLineWidth;
 
     public Config(String fileName) {
         properties = new Properties();
@@ -52,7 +54,6 @@ public class Config {
         }
         loadProperties();
 
-        // Initialize static chunk dimensions after loading config
         Chunk.setChunkDimensions(chunkSizeX, chunkSizeY, chunkSizeZ);
     }
 
@@ -82,6 +83,9 @@ public class Config {
 
         // Debug defaults
         properties.setProperty("debug.flyMode", "0");
+
+        // Graphics defaults
+        properties.setProperty("graphics.hookLineWidth", "2.0"); // Added default
     }
 
     private void loadProperties() {
@@ -110,11 +114,13 @@ public class Config {
 
         // Debug
         this.flyMode = Integer.parseInt(properties.getProperty("debug.flyMode")) >= 1;
+
+        // Graphics
+        this.hookLineWidth = Float.parseFloat(properties.getProperty("graphics.hookLineWidth", "2.0")); // Added loading
     }
 
     // Getters
     public float getGamma() { return gamma; }
-    // public Vector3f getLightPosition() { return lightPosition; } // REMOVE this line
     public float getMaxSpeed() { return maxSpeed; }
     public float getAcceleration() { return acceleration; }
     public float getGroundDeceleration() { return groundDeceleration; }
@@ -132,4 +138,5 @@ public class Config {
     public int getChunkSizeZ() { return chunkSizeZ; }
     public int getRenderDistanceInChunks() { return renderDistanceInChunks; }
     public boolean isDebugFlyModeEnabled() { return flyMode; }
+    public float getHookLineWidth() { return hookLineWidth; } // Added getter
 }
