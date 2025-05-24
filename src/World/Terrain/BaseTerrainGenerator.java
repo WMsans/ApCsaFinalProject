@@ -1,4 +1,3 @@
-// Modified: src/World/Terrain/BaseTerrainGenerator.java
 package World.Terrain;
 
 import Configuration.Config;
@@ -320,6 +319,10 @@ public abstract class BaseTerrainGenerator {
         if (toRemove != null) {
             entities.removeAll(toRemove);
         }
+    }
+
+    public List<Entity> getEntities() {
+        return Collections.unmodifiableList(entities);
     }
 
 

@@ -3,22 +3,28 @@ package Graphics;
 import Configuration.Config;
 import World.Terrain.BaseTerrainGenerator;
 import World.Chunk.*;
+import World.Entities.Entity; // Added
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import java.util.List; // Added
 
 public class Renderer {
 
-    private Shader shader;
+    private Shader terrainShader; // Renamed from 'shader' for clarity
     private Camera camera;
     private Config config;
     private float gammaValue;
+
+    private ModelRenderer entityRenderer; // Added
 
     public Renderer(Camera camera, Config config) {
         this.camera = camera;
         this.config = config;
         this.gammaValue = config.getGamma();
+        this.entityRenderer = new ModelRenderer(); // Added
         try {
-            initShader();
+            initTerrainShader();
+            entityRenderer.init(); // Added: Initialize entity renderer and its shader
         } catch (Exception e) {
             System.err.println("Error initializing renderer:");
             e.printStackTrace();
@@ -26,72 +32,83 @@ public class Renderer {
         }
     }
 
-    private void initShader() throws Exception {
-        shader = new Shader();
-        shader.createVertexShader(Shader.loadResource("/shaders/vertex.glsl"));
-        shader.createFragmentShader(Shader.loadResource("/shaders/fragment.glsl"));
-        shader.link();
-        shader.createUniform("projectionMatrix");
-        shader.createUniform("viewMatrix");
-        shader.createUniform("modelMatrix");
-        shader.createUniform("lightPos");
-        shader.createUniform("lightColor");
-        shader.createUniform("gamma");
-        shader.createUniform("viewPos");
+    private void initTerrainShader() throws Exception {
+        terrainShader = new Shader();
+        terrainShader.createVertexShader(Shader.loadResource("/shaders/vertex.glsl"));
+        terrainShader.createFragmentShader(Shader.loadResource("/shaders/fragment.glsl"));
+        terrainShader.link();
+        terrainShader.createUniform("projectionMatrix");
+        terrainShader.createUniform("viewMatrix");
+        terrainShader.createUniform("modelMatrix");
+        terrainShader.createUniform("lightPos");
+        terrainShader.createUniform("lightColor");
+        terrainShader.createUniform("gamma");
+        terrainShader.createUniform("viewPos");
     }
 
     public void renderTerrain(BaseTerrainGenerator terrain, Vector3f playerPosition) {
         camera.updateFrustum();
 
-        shader.bind();
-        shader.setUniform("projectionMatrix", camera.getProjectionMatrix());
-        shader.setUniform("viewMatrix", camera.getViewMatrix());
-        shader.setUniform("lightPos", camera.getPosition());
-        shader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
-        shader.setUniform("gamma", gammaValue);
-        shader.setUniform("viewPos", camera.getPosition());
+        terrainShader.bind();
+        terrainShader.setUniform("projectionMatrix", camera.getProjectionMatrix());
+        terrainShader.setUniform("viewMatrix", camera.getViewMatrix());
+        terrainShader.setUniform("lightPos", camera.getPosition()); // Light source at camera for now
+        terrainShader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
+        terrainShader.setUniform("gamma", gammaValue);
+        terrainShader.setUniform("viewPos", camera.getPosition());
 
         ChunkId playerChunkId = Chunk.getChunkIdAtWorldPosition(playerPosition);
         int renderDist = config.getRenderDistanceInChunks();
-        int chunksRenderedThisFrame = 0;
 
-        // Iterate through a square area that encompasses the circle/sphere
         for (int dx = -renderDist; dx <= renderDist; dx++) {
-            for (int dy = -renderDist; dy <= renderDist; dy++) { // Assuming y-axis distance matters for rendering
+            for (int dy = -renderDist; dy <= renderDist; dy++) {
                 for (int dz = -renderDist; dz <= renderDist; dz++) {
-                    // Calculate the squared distance from the player's chunk to the current chunk
-                    // Using squared distance avoids a square root calculation, which is more efficient
                     double distanceSq = dx * dx + dy * dy + dz * dz;
-
-                    // Check if the chunk is within the spherical/circular render distance
                     if (distanceSq <= renderDist * renderDist) {
                         ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
-
                         Chunk chunkToRender = terrain.getChunk(currentChunkId);
-
                         if (chunkToRender != null) {
                             if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
                                 continue;
                             }
-
                             ChunkMesh mesh = chunkToRender.getOrCreateMesh();
                             if (mesh != null && mesh.isInitialized()) {
                                 Matrix4f modelMatrix = new Matrix4f().translate(chunkToRender.getMinCorner());
-                                shader.setUniform("modelMatrix", modelMatrix);
+                                terrainShader.setUniform("modelMatrix", modelMatrix);
                                 mesh.render();
-                                chunksRenderedThisFrame++;
                             }
                         }
                     }
                 }
             }
         }
-        shader.unbind();
+        terrainShader.unbind();
     }
 
-    public void cleanup() {
-        if (shader != null) {
-            shader.cleanup();
+    public void renderEntities(List<Entity> entities, Camera cam) {
+        Matrix4f viewMatrix = cam.getViewMatrix();
+        Matrix4f projectionMatrix = cam.getProjectionMatrix();
+
+        for (Entity entity : entities) {
+            if (entity.isValid() && entity.getModel() != null && entity.getModel().getVaoId() != 0) {
+                Matrix4f modelMatrix = entity.getModelMatrix();
+                entityRenderer.render(entity.getModel(), modelMatrix, viewMatrix, projectionMatrix);
+            }
         }
+    }
+
+
+    public void cleanup() {
+        if (terrainShader != null) {
+            terrainShader.cleanup();
+        }
+        if (entityRenderer != null) { // Added
+            entityRenderer.cleanup();
+        }
+    }
+
+    // Added getter for ModelRenderer to allow Main to initialize entity models
+    public ModelRenderer getEntityRenderer() {
+        return entityRenderer;
     }
 }

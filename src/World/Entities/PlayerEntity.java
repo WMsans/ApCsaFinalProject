@@ -408,7 +408,6 @@ public class PlayerEntity extends LivingEntity {
         }
 
         if(input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying && currentTime - lastReleaseGameTime > RELEASE_GAS_TIME){
-            System.out.println("Player applying gas impulse on space press.");
             Vector3f camForward = camera.getForwardDirection(true);
             addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(activeHook.getAttachedPoint().sub(getPosition()).normalize().mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE)));
 
@@ -554,7 +553,6 @@ public class PlayerEntity extends LivingEntity {
 
             if (wouldBeStuck) {
                 // Player would be pulled into a block. Detach hook or stop pulling.
-                System.err.println("Hook tension would pull player into block. Detaching hook.");
                 activeHook.detach(); // This will set currentHookState to READY via onHookReleased
                 return; // Stop further tension logic for this frame
             }
@@ -587,6 +585,11 @@ public class PlayerEntity extends LivingEntity {
             float damage = 1.0f;
             this.attackLivingEntity((LivingEntity)target, damage);
         }
+    }
+
+    @Override
+    protected void createModelData() {
+
     }
 
     @Override
