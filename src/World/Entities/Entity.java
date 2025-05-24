@@ -1,4 +1,3 @@
-// Modified: src/World/Entities/Entity.java
 package World.Entities;
 
 import Graphics.EntityModel; // Added
@@ -35,6 +34,8 @@ public abstract class Entity {
     protected static final float DEFAULT_TERMINAL_VELOCITY = 50.0f;
     protected static final float COLLISION_SKIN_WIDTH = 0.005f;
 
+    protected boolean skipCollisionProcessing = false; // Added: Flag to skip collision logic
+
     public Entity(BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Vector3f dimensions) {
         this.id = UUID.randomUUID();
         this.worldTerrain = worldTerrain;
@@ -59,6 +60,11 @@ public abstract class Entity {
     }
 
     protected void applyGravity(float deltaTime) {
+        // Added: If skipping collision (e.g., flying), gravity is likely handled by specialized logic or ignored.
+        if (skipCollisionProcessing) {
+            return;
+        }
+
         if (!isOnGround) {
             velocity.y -= DEFAULT_GRAVITY_ACCELERATION * deltaTime;
             if (velocity.y < -DEFAULT_TERMINAL_VELOCITY) {
@@ -72,6 +78,14 @@ public abstract class Entity {
     protected void moveEntity(float deltaTime) {
         if (deltaTime == 0) return;
         Vector3f potentialMovement = new Vector3f(velocity).mul(deltaTime);
+
+        // Added: If skipping collision processing, just apply movement and exit.
+        if (skipCollisionProcessing) {
+            position.add(potentialMovement);
+            isOnGround = false; // When skipping collisions (flying), player is not on ground.
+            return;
+        }
+
         Vector3f entityDimensions = new Vector3f(
                 localBoundingBox.max.x - localBoundingBox.min.x,
                 localBoundingBox.max.y - localBoundingBox.min.y,

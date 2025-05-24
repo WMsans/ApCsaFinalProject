@@ -95,6 +95,9 @@ public class PlayerEntity extends LivingEntity {
             handleFlyModeToggle(currentTime);
         }
 
+        // Added: Set the flag for collision processing in Entity.java
+        this.skipCollisionProcessing = isFlying && config.isDebugFlyModeEnabled();
+
         handleMouseLook();
         handleHookInput(deltaTime);
 
@@ -103,7 +106,9 @@ public class PlayerEntity extends LivingEntity {
             handleCoyoteTime(deltaTime);
             jumpKeyHeld = input.isKeyDown(GLFW_KEY_SPACE);
         } else {
-            jumpKeyHeld = false;
+            jumpKeyHeld = false; // Ensure jump logic doesn't interfere with flying
+            isOnGround = false;  // When flying, player is not on ground
+            // Flying logic will manage velocity, including vertical, in handleFlyingMovement
         }
 
         handleKeyboardMovement(deltaTime,currentTime); // This updates velocity based on input
@@ -267,7 +272,7 @@ public class PlayerEntity extends LivingEntity {
             if (lastSpacePressTime > 0 && (currentTime - lastSpacePressTime) < DOUBLE_SPACE_PRESS_INTERVAL) {
                 isFlying = !isFlying;
                 if (isFlying) {
-                    velocity.y = 0;
+                    velocity.y = 0; // Reset vertical velocity when starting to fly
                     isOnGround = false;
                     System.out.println("Fly mode: ON");
                 } else {
@@ -330,23 +335,24 @@ public class PlayerEntity extends LivingEntity {
     }
 
     private void handleFlyingMovement(float deltaTime) {
-        velocity.zero();
+        velocity.zero(); // Reset velocity for direct control
         Vector3f flyDirection = new Vector3f(0,0,0);
-        Vector3f camForward = camera.getForwardDirection(false);
-        Vector3f camRight = camera.getRightDirection(false);
+        Vector3f camForward = camera.getForwardDirection(false); // Use true 3D forward for flying
+        Vector3f camRight = camera.getRightDirection(false);   // Use true 3D right for flying
+        Vector3f worldUp = new Vector3f(0, 1, 0);             // Use world up for space/shift
 
         if (input.isKeyDown(GLFW_KEY_W)) flyDirection.add(camForward);
         if (input.isKeyDown(GLFW_KEY_S)) flyDirection.sub(camForward);
         if (input.isKeyDown(GLFW_KEY_A)) flyDirection.sub(camRight);
         if (input.isKeyDown(GLFW_KEY_D)) flyDirection.add(camRight);
-        if (input.isKeyDown(GLFW_KEY_SPACE)) flyDirection.y += 1.0f;
-        if (input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) flyDirection.y -= 1.0f;
+        if (input.isKeyDown(GLFW_KEY_SPACE)) flyDirection.add(worldUp); // Fly up along world Y
+        if (input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) flyDirection.sub(worldUp); // Fly down along world Y
 
         if (flyDirection.lengthSquared() > 0) {
             flyDirection.normalize();
             velocity.set(flyDirection.mul(config.getFlySpeed()));
         }
-        isOnGround = false;
+        isOnGround = false; // Explicitly set isOnGround to false when flying
     }
 
     private void handleWalkingAndGasMovement(float deltaTime, float currentTime) {
@@ -435,7 +441,7 @@ public class PlayerEntity extends LivingEntity {
 
     @Override
     protected void applyGravity(float deltaTime) {
-        if (isFlying && config.isDebugFlyModeEnabled()) {
+        if (isFlying && config.isDebugFlyModeEnabled()) { // This condition is now checked in Entity.applyGravity via skipCollisionProcessing
             return;
         }
 
@@ -445,7 +451,7 @@ public class PlayerEntity extends LivingEntity {
             currentGravity *= config.getJumpEndEarlyGravityModifier();
         }
 
-        if (!isOnGround) {
+        if (!isOnGround) { // This part is now effectively managed by Entity.applyGravity if skipCollisionProcessing is false
             velocity.y -= currentGravity * deltaTime;
             if (velocity.y < -config.getMaxFallSpeed()) {
                 velocity.y = -config.getMaxFallSpeed();
