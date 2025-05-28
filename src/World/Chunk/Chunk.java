@@ -7,25 +7,23 @@ import java.util.ArrayList;
 import java.util.Collections;
 import World.Block;
 
-
 public class Chunk {
     private final ChunkId id;
-    private final List<Block> blocks; // Changed to ArrayList
+    private final List<Block> blocks;
     private final Vector3f minCorner;
     private final Vector3f maxCorner;
-    private final CustomAABB boundingBox; // New AABB for the chunk
+    private final CustomAABB boundingBox;
 
-    private ChunkMesh chunkMesh; // New field for batched mesh
-    private boolean needsMeshRebuild = true; // Flag to rebuild mesh
+    private ChunkMesh chunkMesh;
+    private boolean needsMeshRebuild = true;
 
     public static int CHUNK_SIZE_X = 16;
     public static int CHUNK_SIZE_Y = 16;
     public static int CHUNK_SIZE_Z = 16;
 
-
     public Chunk(ChunkId id) {
         this.id = id;
-        this.blocks = new ArrayList<>(); // Changed to ArrayList
+        this.blocks = new ArrayList<>();
 
         this.minCorner = new Vector3f(
                 (float)id.x * CHUNK_SIZE_X,
@@ -37,8 +35,8 @@ public class Chunk {
                 (float)(id.y + 1) * CHUNK_SIZE_Y,
                 (float)(id.z + 1) * CHUNK_SIZE_Z
         );
-        this.boundingBox = new CustomAABB(this.minCorner, this.maxCorner); // Initialize AABB
-        this.chunkMesh = new ChunkMesh(); // Initialize mesh object
+        this.boundingBox = new CustomAABB(this.minCorner, this.maxCorner);
+        this.chunkMesh = new ChunkMesh();
     }
 
     public ChunkId getId() {
@@ -46,9 +44,7 @@ public class Chunk {
     }
 
     public void addBlock(Block block) {
-        // Consider synchronization if this method can be called concurrently
-        // on the same Chunk instance from different threads after initial generation.
-        // For initial generation within a single worker thread, this is fine.
+
         blocks.add(block);
         needsMeshRebuild = true;
     }
@@ -56,26 +52,19 @@ public class Chunk {
     public boolean removeBlock(Block block) {
         boolean removed = blocks.remove(block);
         if (removed) {
-            needsMeshRebuild = true; // Mark for rebuild
+            needsMeshRebuild = true;
         }
         return removed;
     }
 
     public List<Block> getBlocks() {
-        // If accessed concurrently with modifications, and you need a stable view,
-        // you might need to rethink this or synchronize access.
-        // However, for read-only purposes like rendering after mesh build, it's okay.
+
         return Collections.unmodifiableList(blocks);
     }
 
-    // Provides direct access to the mutable list.
-    // Used by ChunkMesh.buildMesh(). Ensure this access is managed safely
-    // if concurrent modification/reading is possible.
-    // Given current structure (mesh build on main thread after generation), this should be okay.
     public List<Block> getModifiableBlocks() {
         return blocks;
     }
-
 
     public boolean isWorldPositionInChunk(Vector3f worldPosition) {
         return worldPosition.x >= minCorner.x && worldPosition.x < maxCorner.x &&
@@ -91,11 +80,10 @@ public class Chunk {
         return new Vector3f(maxCorner);
     }
 
-    public CustomAABB getAABB() { // Getter for the chunk's AABB
+    public CustomAABB getAABB() {
         return boundingBox;
     }
 
-    // Mesh management
     public ChunkMesh getOrCreateMesh() {
         if (chunkMesh == null) {
             chunkMesh = new ChunkMesh();
@@ -119,7 +107,6 @@ public class Chunk {
             chunkMesh.cleanup();
         }
     }
-
 
     public static void setChunkDimensions(int sizeX, int sizeY, int sizeZ) {
         CHUNK_SIZE_X = sizeX;

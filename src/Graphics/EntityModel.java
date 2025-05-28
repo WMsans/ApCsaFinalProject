@@ -123,4 +123,52 @@ public class EntityModel {
         };
         return new EntityModel(vertices, indices);
     }
+    public static EntityModel createCuboidModel(float width, float height, float depth, Vector3f color) {
+        float halfWidth = width / 2.0f;
+        float halfHeight = height / 2.0f;
+        float halfDepth = depth / 2.0f;
+
+        float[] vertices = {
+                // Front face
+                -halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                -halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                // Back face
+                -halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                -halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                // Top face
+                -halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z,
+                -halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z,
+                // Bottom face
+                -halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                -halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                // Right face
+                halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z,
+                halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                // Left face
+                -halfWidth, -halfHeight, -halfDepth, color.x, color.y, color.z,
+                -halfWidth, -halfHeight,  halfDepth, color.x, color.y, color.z,
+                -halfWidth,  halfHeight,  halfDepth, color.x, color.y, color.z,
+                -halfWidth,  halfHeight, -halfDepth, color.x, color.y, color.z
+        };
+
+        int[] indices = {
+                0, 1, 2, 0, 2, 3,       // Front
+                4, 5, 6, 4, 6, 7,       // Back
+                8, 9, 10, 8, 10, 11,    // Top
+                12, 13, 14, 12, 14, 15, // Bottom
+                16, 17, 18, 16, 18, 19, // Right
+                20, 21, 22, 20, 22, 23  // Left
+        };
+        return new EntityModel(vertices, indices);
+    }
 }

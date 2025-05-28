@@ -1,11 +1,15 @@
 package World.Entities;
 
-import Graphics.EntityModel; // Added
+import Graphics.EntityModel;
+import Graphics.ModelComponent; // Added
+import Graphics.ModelRenderer; // Added for initializeModels signature
 import World.Block;
 import World.Terrain.BaseTerrainGenerator;
-import org.joml.Matrix4f; // Added
-import org.joml.Quaternionf; // Added
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
+
+import java.util.ArrayList; // Added
 
 public class Hook extends Entity {
 
@@ -14,74 +18,56 @@ public class Hook extends Entity {
     private Vector3f attachedPoint = null;
     private Block attachedBlock = null;
     private float currentStringLength = 0.0f;
-    private final float MODEL_SIZE = 1f; // Size of the hook model
-    private final Vector3f MODEL_COLOR = new Vector3f(1.0f, 1.0f, 1.0f); // White
+    private final float MODEL_SIZE = 0.7f; // Adjusted size for a hook
+    private final Vector3f MODEL_COLOR = new Vector3f(0.7f, 0.7f, 0.7f); // Grey color for hook
 
     public Hook(LivingEntity owner, BaseTerrainGenerator worldTerrain, Vector3f initialPosition) {
-        super(worldTerrain, initialPosition, new Vector3f(1f, 1f, 1f)); // Collision box matches model
+        super(worldTerrain, initialPosition, new Vector3f(0.7f, 0.7f, 0.7f)); // Collision box
         this.owner = owner;
         this.velocity.zero();
-        // System.out.println("Hook created, state: Ready"); // Keep for debugging if needed
     }
 
     @Override
-    protected void createModelData() {
-        this.model = EntityModel.createCubeModel(MODEL_SIZE, MODEL_COLOR);
+    protected void populateModelComponents() {
+        if (modelComponents.isEmpty()) { // Only add if not already populated
+            EntityModel hookModel = EntityModel.createCubeModel(MODEL_SIZE, MODEL_COLOR);
+            // For the hook, the local transform can be identity as its orientation is handled by the main entity's rotation.
+            modelComponents.add(new ModelComponent(hookModel, new Matrix4f().identity()));
+        }
     }
 
     @Override
     public Matrix4f getModelMatrix() {
-        Matrix4f modelMatrix = new Matrix4f().translate(position);
+        // The main entity transform (position, yaw, pitch, roll)
+        Matrix4f baseEntityMatrix = new Matrix4f().translate(position);
 
         Vector3f direction = new Vector3f(velocity);
-        if (direction.lengthSquared() == 0) {
-            // Default orientation if no velocity (e.g., look along positive Z)
-            // Or, if owner exists and is PlayerEntity, could use camera direction
+        if (isAttached && attachedPoint != null && owner != null) {
+            // If attached, point towards the owner (or from owner to hook point for visual effect)
+            owner.getPosition().sub(this.position, direction);
+        } else if (direction.lengthSquared() == 0) {
             if (owner instanceof PlayerEntity) {
                 direction = ((PlayerEntity) owner).getCamera().getForwardDirection(true);
             } else {
-                direction.set(0, 0, 1); // Default Z forward
+                direction.set(0, 0, 1);
             }
         }
-        direction.normalize();
 
-        // Rotate to align the model's local Z-axis (or X, depending on model) with the direction
-        // Using Quaternionf for robust rotation
-        Quaternionf rotation = new Quaternionf().rotationTo(new Vector3f(0, 0, 1), direction); // Assumes model's forward is +Z
-        modelMatrix.rotate(rotation);
+        if (direction.lengthSquared() > 0.001f) {
+            direction.normalize();
+            Quaternionf rotation = new Quaternionf().rotationTo(new Vector3f(0, 0, 1), direction);
+            baseEntityMatrix.rotate(rotation);
+        }
 
-        // Apply roll if needed, for hook it's likely not necessary
-        // modelMatrix.rotateZ((float)Math.toRadians(this.roll));
+        baseEntityMatrix.rotateZ((float)Math.toRadians(this.roll));
 
-
-        // Scale is handled by the model's vertex positions already (MODEL_SIZE)
-        // If you wanted to scale an arbitrary model, you'd apply it here:
-        // modelMatrix.scale(MODEL_SIZE);
-        return modelMatrix;
+        return baseEntityMatrix;
     }
 
 
     @Override
     protected void updateLogic(float deltaTime) {
-        // If hook is not attached and has a velocity, it's traveling
-        if (!isAttached && velocity.lengthSquared() > 0.01f) {
-            // Could add logic for collision with blocks while traveling to auto-attach
-            // For now, attachment is handled by PlayerEntity raycast
-        }
-
-        if (isAttached && owner != null) {
-            // The hook entity itself is static once attached.
-            // The player entity manages the tension and string length.
-            // If owner moves too far or detaches, this hook entity should be removed.
-            if (!owner.isValid() || owner.getPosition().distanceSquared(this.position) > (currentStringLength + 5.0f) * (currentStringLength + 5.0f) ) {
-                // Owner gone or too far, detach (this will also kill this entity)
-                // detach(); // Detach is usually called by player input or tension logic
-            }
-        } else if (!isAttached && velocity.lengthSquared() < 0.01f && owner != null) {
-            // If hook isn't attached and not moving (e.g. after player releases but before it hits anything)
-            // it should probably be removed after a short timeout or if it falls too far.
-            // For now, PlayerEntity handles immediate removal on release.
-        }
+        // ... (existing logic)
     }
 
     @Override
@@ -98,10 +84,9 @@ public class Hook extends Entity {
         this.isAttached = true;
         this.attachedBlock = block;
         this.attachedPoint = new Vector3f(point);
-        this.position.set(point); // Hook is now at the attached point
+        this.position.set(point);
         this.currentStringLength = initialStringLength;
-        this.velocity.zero(); // Stop hook movement
-        // System.out.println("Hook state: Stabilized at " + point);
+        this.velocity.zero();
     }
 
     public void detach() {
@@ -109,10 +94,9 @@ public class Hook extends Entity {
         this.attachedBlock = null;
         this.attachedPoint = null;
         this.currentStringLength = 0;
-        this.kill(); // Mark the hook entity as invalid so it can be cleaned up
-        // System.out.println("Hook state: Released and removed.");
+        this.kill();
         if (owner instanceof PlayerEntity) {
-            ((PlayerEntity) owner).onHookReleased(); // Notify player
+            ((PlayerEntity) owner).onHookReleased();
         }
     }
 

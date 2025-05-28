@@ -1,7 +1,7 @@
 package Graphics;
 
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+// import org.joml.Vector3f; // No longer needed here
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
@@ -30,15 +30,18 @@ public class ModelRenderer {
         // Add other uniforms if your entity_fragment.glsl uses them (e.g., lightColor, viewPos)
     }
 
+    public Shader getEntityShader() {
+        return entityShader;
+    }
+
     public void buildMesh(EntityModel model) {
         if (model == null || model.getVertices() == null || model.getIndices() == null) {
-            System.err.println("ModelRenderer: Attempted to build mesh for null or incomplete model.");
+            System.err.println("ModelRenderer: Attempted to build mesh for null or incomplete model data.");
             return;
         }
-        if (model.getVaoId() != 0) { // Already built
-            model.cleanup(); // Clean up old buffers if rebuilding
+        if (model.getVaoId() != 0) {
+            model.cleanup();
         }
-
 
         FloatBuffer verticesBuffer = null;
         IntBuffer indicesBuffer = null;
@@ -64,13 +67,9 @@ public class ModelRenderer {
             GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, eboId);
             GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL15.GL_STATIC_DRAW);
 
-            // Vertex attributes: position (vec3), color (vec3)
-            // Stride is 6 floats (3 for pos, 3 for color)
             int stride = 6 * Float.BYTES;
-            // Position attribute
             GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, stride, 0);
             GL20.glEnableVertexAttribArray(0);
-            // Color attribute
             GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, stride, 3 * Float.BYTES);
             GL20.glEnableVertexAttribArray(1);
 
@@ -83,6 +82,11 @@ public class ModelRenderer {
         }
     }
 
+    /**
+     * This specific render method is now less used as Renderer.java handles shader binding
+     * and uniform setting per component. Kept for potential direct calls if needed.
+     */
+    @Deprecated
     public void render(EntityModel model, Matrix4f modelMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         if (model == null || model.getVaoId() == 0) {
             return;

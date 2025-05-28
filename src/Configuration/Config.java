@@ -1,6 +1,6 @@
 package Configuration;
 
-import World.Chunk.*; // Import Chunk for setting dimensions
+import World.Chunk.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -9,7 +9,6 @@ import org.joml.Vector3f;
 public class Config {
     private Properties properties;
 
-    // Movement Parameters
     public float maxSpeed;
     public float acceleration;
     public float groundDeceleration;
@@ -23,19 +22,15 @@ public class Config {
     public float flySpeed;
     public boolean enablePlayerAirRoll;
 
-    // Lighting Parameters
     public float gamma;
 
-    // World/Chunk Parameters
     public int chunkSizeX;
     public int chunkSizeY;
     public int chunkSizeZ;
     public int renderDistanceInChunks;
 
-    // Debug Parameters
     public boolean flyMode;
 
-    // Graphics Parameters
     public float hookLineWidth;
 
     public Config(String fileName) {
@@ -58,10 +53,9 @@ public class Config {
     }
 
     private void setDefaultProperties() {
-        // Lighting defaults
+
         properties.setProperty("gamma", "0.2");
 
-        // Movement defaults
         properties.setProperty("player.maxSpeed", "5.0");
         properties.setProperty("player.acceleration", "30.0");
         properties.setProperty("player.groundDeceleration", "20.0");
@@ -75,24 +69,20 @@ public class Config {
         properties.setProperty("player.flySpeed", "12.0");
         properties.setProperty("player.enablePlayerAirRoll", "1");
 
-        // World/Chunk defaults
         properties.setProperty("world.chunkSizeX", "16");
         properties.setProperty("world.chunkSizeY", "16");
         properties.setProperty("world.chunkSizeZ", "16");
         properties.setProperty("world.renderDistanceInChunks", "8");
 
-        // Debug defaults
         properties.setProperty("debug.flyMode", "0");
 
-        // Graphics defaults
-        properties.setProperty("graphics.hookLineWidth", "2.0"); // Added default
+        properties.setProperty("graphics.hookLineWidth", "2.0");
     }
 
     private void loadProperties() {
-        // Lighting
+
         this.gamma = Float.parseFloat(properties.getProperty("gamma"));
 
-        // Movement
         this.maxSpeed = Float.parseFloat(properties.getProperty("player.maxSpeed"));
         this.acceleration = Float.parseFloat(properties.getProperty("player.acceleration"));
         this.groundDeceleration = Float.parseFloat(properties.getProperty("player.groundDeceleration"));
@@ -106,20 +96,16 @@ public class Config {
         this.flySpeed = Float.parseFloat(properties.getProperty("player.flySpeed", "12.0"));
         this.enablePlayerAirRoll = Integer.parseInt(properties.getProperty("player.enablePlayerAirRoll")) >= 1;
 
-        // World/Chunk
         this.chunkSizeX = Integer.parseInt(properties.getProperty("world.chunkSizeX"));
         this.chunkSizeY = Integer.parseInt(properties.getProperty("world.chunkSizeY"));
         this.chunkSizeZ = Integer.parseInt(properties.getProperty("world.chunkSizeZ"));
         this.renderDistanceInChunks = Integer.parseInt(properties.getProperty("world.renderDistanceInChunks"));
 
-        // Debug
         this.flyMode = Integer.parseInt(properties.getProperty("debug.flyMode")) >= 1;
 
-        // Graphics
-        this.hookLineWidth = Float.parseFloat(properties.getProperty("graphics.hookLineWidth", "2.0")); // Added loading
+        this.hookLineWidth = Float.parseFloat(properties.getProperty("graphics.hookLineWidth", "2.0"));
     }
 
-    // Getters
     public float getGamma() { return gamma; }
     public float getMaxSpeed() { return maxSpeed; }
     public float getAcceleration() { return acceleration; }
@@ -138,5 +124,5 @@ public class Config {
     public int getChunkSizeZ() { return chunkSizeZ; }
     public int getRenderDistanceInChunks() { return renderDistanceInChunks; }
     public boolean isDebugFlyModeEnabled() { return flyMode; }
-    public float getHookLineWidth() { return hookLineWidth; } // Added getter
+    public float getHookLineWidth() { return hookLineWidth; }
 }

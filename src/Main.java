@@ -1,7 +1,8 @@
+import Graphics.ModelComponent;
 import Graphics.Renderer;
 import Graphics.Window;
 import World.Entities.PlayerEntity;
-import World.Entities.Entity; // Added
+import World.Entities.Entity;
 import World.Terrain.*;
 import Input.*;
 import Configuration.*;
@@ -11,7 +12,7 @@ import org.joml.Vector3f;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 
-import java.util.List; // Added
+import java.util.List;
 
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -143,7 +144,8 @@ public class Main implements Runnable {
 
         // Initialize models for all entities
         for (Entity entity : terrain.getEntities()) {
-            entity.initializeModel(renderer.getEntityRenderer());
+            // entity.initializeModel(renderer.getEntityRenderer()); // Old way
+            entity.initializeModels(renderer.getEntityRenderer()); // New way
         }
     }
 
@@ -170,15 +172,19 @@ public class Main implements Runnable {
 
             // Initialize models for any new entities or entities whose VAOs aren't built
             for (Entity entity : currentEntities) {
-                if (!entity.isValid()) continue; // Skip invalid entities
+                if (!entity.isValid()) continue;
 
-                if (entity.getModel() == null) {
-                    // Model data has not been created yet (e.g., new Hook)
-                    entity.initializeModel(renderer.getEntityRenderer()); // This calls createModelData() then buildMesh()
-                } else if (entity.getModel().getVaoId() == 0) {
-                    // Model data exists, but GPU buffers (VAO) are not ready
-                    // This implies createModelData() was called, but buildMesh() wasn't or failed
-                    renderer.getEntityRenderer().buildMesh(entity.getModel());
+                List<ModelComponent> components = entity.getModelComponents();
+                if (components.isEmpty() && entity.isValid()) { // If component list is empty, try to initialize
+                    entity.initializeModels(renderer.getEntityRenderer());
+                    components = entity.getModelComponents(); // re-fetch
+                }
+
+                for (ModelComponent mc : components) {
+                    if (mc.model() != null && mc.model().getVaoId() == 0) { // Check if VAO isn't built for this specific model
+                        // This implies populateModelComponents was called, but buildMesh wasn't or failed for this model
+                        renderer.getEntityRenderer().buildMesh(mc.model());
+                    }
                 }
             }
 
@@ -195,8 +201,18 @@ public class Main implements Runnable {
         // Clean up models for entities that are still in the list
         if (terrain != null) {
             for (Entity entity : terrain.getEntities()) {
-                if (entity.getModel() != null) {
-                    entity.getModel().cleanup();
+                if (!entity.isValid()) continue;
+
+                List<ModelComponent> components = entity.getModelComponents();
+                if (components.isEmpty() && entity.isValid()) { // If component list is empty, no need to cleanup
+                    continue;
+                }
+
+                for (ModelComponent mc : components)
+                {
+                    if (mc.model() != null && mc.model().getVaoId() == 0) {
+                        mc.model().cleanup();
+                    }
                 }
             }
             terrain.cleanup();

@@ -1,17 +1,21 @@
 package World.Entities;
 
-import Graphics.EntityModel; // Added
-import Graphics.ModelRenderer; // Added
+import Graphics.ModelComponent;
+import Graphics.EntityModel;
+import Graphics.ModelRenderer;
 import Inventory.Hand;
 import Physics.CustomAABB;
 import World.Block;
 import World.Terrain.BaseTerrainGenerator;
 import World.Chunk.Chunk;
 import World.Chunk.ChunkId;
-import org.joml.Matrix4f; // Added
-import org.joml.Quaternionf; // Added
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
+
+import java.util.ArrayList; // Added
+import java.util.Collections; // Added
 import java.util.UUID;
 import java.util.List;
 
@@ -21,20 +25,20 @@ public abstract class Entity {
     protected Vector3f velocity;
     protected float yaw;
     protected float pitch;
-    protected float roll = 0f; // Added roll
+    protected float roll = 0f;
 
     protected boolean isValid;
     protected boolean isOnGround;
     protected BaseTerrainGenerator worldTerrain;
 
     protected CustomAABB localBoundingBox;
-    protected EntityModel model; // Added
+    protected List<ModelComponent> modelComponents = new ArrayList<>(); // Changed
 
     protected static final float DEFAULT_GRAVITY_ACCELERATION = 19.62f;
     protected static final float DEFAULT_TERMINAL_VELOCITY = 50.0f;
     protected static final float COLLISION_SKIN_WIDTH = 0.005f;
 
-    protected boolean skipCollisionProcessing = false; // Added: Flag to skip collision logic
+    protected boolean skipCollisionProcessing = false;
 
     public Entity(BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Vector3f dimensions) {
         this.id = UUID.randomUUID();
@@ -60,7 +64,6 @@ public abstract class Entity {
     }
 
     protected void applyGravity(float deltaTime) {
-        // Added: If skipping collision (e.g., flying), gravity is likely handled by specialized logic or ignored.
         if (skipCollisionProcessing) {
             return;
         }
@@ -79,10 +82,9 @@ public abstract class Entity {
         if (deltaTime == 0) return;
         Vector3f potentialMovement = new Vector3f(velocity).mul(deltaTime);
 
-        // Added: If skipping collision processing, just apply movement and exit.
         if (skipCollisionProcessing) {
             position.add(potentialMovement);
-            isOnGround = false; // When skipping collisions (flying), player is not on ground.
+            isOnGround = false;
             return;
         }
 
@@ -216,10 +218,12 @@ public abstract class Entity {
 
     public void kill() {
         this.isValid = false;
-        if (this.model != null) {
-            this.model.cleanup(); // Clean up GPU resources for the model
-            this.model = null;
+        for (ModelComponent component : modelComponents) {
+            if (component.model() != null) {
+                component.model().cleanup();
+            }
         }
+        modelComponents.clear();
     }
 
     public UUID getId() { return id; }
@@ -239,30 +243,39 @@ public abstract class Entity {
     public abstract void onEntityInteraction(Entity target, Hand hand);
 
     // Model related methods
-    public EntityModel getModel() { return model; }
+    public List<ModelComponent> getModelComponents() { // New method
+        return Collections.unmodifiableList(modelComponents);
+    }
 
     /**
-     * Subclasses should implement this to define their visual model.
-     * This method should set this.model.
+     * Subclasses should implement this to define their visual models by populating the modelComponents list.
+     * This method should be called before initializeModels.
      */
-    protected abstract void createModelData();
+    protected abstract void populateModelComponents(); // Renamed and purpose changed
 
-    public void initializeModel(ModelRenderer modelRenderer) {
-        createModelData(); // Populates this.model with vertex/index data
-        if (this.model != null && modelRenderer != null) {
-            modelRenderer.buildMesh(this.model); // Builds VAO/VBO and stores IDs in this.model
+    /**
+     * Initializes GPU buffers for all models in modelComponents if not already built.
+     * Should be called after populateModelComponents.
+     * @param modelRenderer The renderer responsible for building mesh data (VAO/VBO).
+     */
+    public void initializeModels(ModelRenderer modelRenderer) { // Renamed
+        if (modelComponents.isEmpty()) {
+            populateModelComponents(); // Ensure components are populated first
+        }
+        if (modelRenderer != null) {
+            for (ModelComponent component : modelComponents) {
+                if (component.model() != null && component.model().getVaoId() == 0) { // Check if VAO is not built
+                    modelRenderer.buildMesh(component.model());
+                }
+            }
         }
     }
 
     public Matrix4f getModelMatrix() {
         Matrix4f modelMatrix = new Matrix4f().translate(position);
-        // Apply yaw, pitch, roll. Standard FPS camera order is Yaw -> Pitch. Roll can be applied last locally.
         modelMatrix.rotateY((float)Math.toRadians(yaw));
-        modelMatrix.rotateX((float)Math.toRadians(pitch)); // If entities can pitch independently
-        modelMatrix.rotateZ((float)Math.toRadians(roll));  // If entities can roll
-
-        // Default scale, can be overridden by subclasses if they have varying sizes for their models
-        // modelMatrix.scale(1.0f); // Example scale
+        modelMatrix.rotateX((float)Math.toRadians(pitch));
+        modelMatrix.rotateZ((float)Math.toRadians(roll));
         return modelMatrix;
     }
 

@@ -5,7 +5,7 @@ import World.Terrain.BaseTerrainGenerator;
 import World.Chunk.*;
 import World.Entities.Entity;
 import World.Entities.PlayerEntity;
-import World.Entities.Hook;
+import World.Entities.Hook; // Keep for hook line rendering logic
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
@@ -76,7 +76,8 @@ public class Renderer {
 
         lineVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, lineVboId);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, 6 * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
+        // Allocate buffer size for 2 vertices (start and end point of a line), each with 3 floats (x,y,z)
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, 2 * 3 * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
 
         GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
         GL20.glEnableVertexAttribArray(0);
@@ -101,15 +102,17 @@ public class Renderer {
         int renderDist = config.getRenderDistanceInChunks();
 
         for (int dx = -renderDist; dx <= renderDist; dx++) {
-            for (int dy = -renderDist; dy <= renderDist; dy++) {
+            for (int dy = -renderDist; dy <= renderDist; dy++) { // Adjusted to match player's Y chunk for initial culling pass
                 for (int dz = -renderDist; dz <= renderDist; dz++) {
-                    double distanceSq = dx * dx + dy * dy + dz * dz;
-                    if (distanceSq <= renderDist * renderDist) {
+                    double distanceSqXZ = dx * dx + dz * dz; // Check XZ distance primarily for render distance
+                    double distanceSqY = dy*dy; // Check Y distance separately or include in main check
+
+                    if (distanceSqXZ <= renderDist * renderDist && distanceSqY <= renderDist * renderDist ) { // Example: include Y in distance check
                         ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
-                        Chunk chunkToRender = terrain.getChunk(currentChunkId);
+                        Chunk chunkToRender = terrain.getChunk(currentChunkId); // Use getChunk for async loading
                         if (chunkToRender != null) {
                             if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
-                                continue;
+                                // continue; // Frustum culling is currently not fully implemented/effective
                             }
                             ChunkMesh mesh = chunkToRender.getOrCreateMesh();
                             if (mesh != null && mesh.isInitialized()) {
@@ -129,41 +132,51 @@ public class Renderer {
         Matrix4f viewMatrix = cam.getViewMatrix();
         Matrix4f projectionMatrix = cam.getProjectionMatrix();
 
+        entityRenderer.getEntityShader().bind();
+        entityRenderer.getEntityShader().setUniform("viewMatrix", viewMatrix);
+        entityRenderer.getEntityShader().setUniform("projectionMatrix", projectionMatrix);
+        // Set other shader-wide uniforms if any (e.g. lighting for entities)
+
         for (Entity entity : entities) {
-            if (entity.isValid() && entity.getModel() != null && entity.getModel().getVaoId() != 0) {
-                if (entity instanceof PlayerEntity && entity.getModel().getVertices() == null) {
-                    // continue;
+            if (entity.isValid()) {
+                Matrix4f entityBaseTransform = entity.getModelMatrix();
+                List<ModelComponent> components = entity.getModelComponents();
+
+                if (components.isEmpty() && entity.isValid()) { // If components list is empty but entity is valid, try to initialize them.
+                    entity.initializeModels(entityRenderer); // This will call populate and then build meshes.
+                    components = entity.getModelComponents(); // Re-fetch components
                 }
-                Matrix4f modelMatrix = entity.getModelMatrix();
-                entityRenderer.render(entity.getModel(), modelMatrix, viewMatrix, projectionMatrix);
+
+                for (ModelComponent component : components) {
+                    if (component.model() != null && component.model().getVaoId() != 0) {
+                        if (component.usesEntityShader()) {
+                            Matrix4f finalModelMatrix = new Matrix4f(entityBaseTransform).mul(component.localTransform());
+                            entityRenderer.getEntityShader().setUniform("modelMatrix", finalModelMatrix);
+                            // entityRenderer.render(component.model(), finalModelMatrix, viewMatrix, projectionMatrix); // Old way
+                            GL30.glBindVertexArray(component.model().getVaoId());
+                            GL11.glDrawElements(GL11.GL_TRIANGLES, component.model().getIndexCount(), GL11.GL_UNSIGNED_INT, 0);
+                            GL30.glBindVertexArray(0);
+                        } else {
+                            // Logic for models using a different shader (e.g. a custom shader for ChromeSentinel's lights)
+                            // For now, assume all use entityShader
+                        }
+                    }
+                }
             }
         }
+        entityRenderer.getEntityShader().unbind();
 
+        // Hook line rendering (remains the same)
         if (player != null && player.getActiveHook() != null && player.getActiveHook().isAttached()) {
-            Hook currentPlayersHook = player.getActiveHook(); // Use a local var for clarity
-            Vector3f hookActualAttachPoint = currentPlayersHook.getPosition();
+            Hook currentPlayersHook = player.getActiveHook();
+            Vector3f hookActualAttachPoint = currentPlayersHook.getPosition(); // Use getAttachedPoint for the line end
 
             if (hookActualAttachPoint != null) {
-                // Sanity check: Is the hook's reported attachment point too far from the hook entity's own world position?
-                // This might indicate a desync or corruption if they are supposed to be the same when attached.
-                // Hook's entity position should be the same as its attachedPoint when it is attached.
-                float distanceToEntityPosSq = hookActualAttachPoint.distanceSquared(currentPlayersHook.getPosition());
-
-                // A small tolerance for floating point arithmetic might be okay, but a large difference is suspicious.
-                if (distanceToEntityPosSq > 1.0f) { // If difference is more than 1 unit (squared), log warning.
-                    System.err.println("Warning: Hook attachedPoint " + hookActualAttachPoint +
-                            " is far from Hook entity position " + currentPlayersHook.getPosition() +
-                            ". Hook ID: " + currentPlayersHook.getId() + ". This may indicate a bug.");
-                    // As a potential safety measure, you could choose not to render the line or use the hook's entity position:
-                    // return; // Option 1: Don't render the line if data is suspicious
-                    // hookActualAttachPoint = currentPlayersHook.getPosition(); // Option 2: Use entity position as fallback (may hide the root issue)
-                }
-
-
                 Vector3f camLeft = camera.getRightDirection(true).mul(-0.2f);
                 Vector3f camUp = new Vector3f();
-                camera.getForwardDirection(true).cross(camera.getRightDirection(true), camUp);
-                Vector3f camDown = camUp.mul(0.2f);
+                camera.getForwardDirection(true).cross(camera.getRightDirection(true), camUp); // Get camera's relative up
+                camUp.normalize(); // Ensure it's a unit vector
+                Vector3f camDown = new Vector3f(camUp).mul(0.2f); // Use the calculated up for down
                 Vector3f camForwardOffset = camera.getForwardDirection(true).mul(0.3f);
                 Vector3f lineStartPos = new Vector3f(camera.getPosition()).add(camLeft).add(camDown).add(camForwardOffset);
 
@@ -175,7 +188,7 @@ public class Renderer {
     private void renderLine(Vector3f start, Vector3f end, Vector3f color, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
         lineShader.bind();
         lineShader.setUniform("projectionMatrix", projectionMatrix);
-        lineShader.setUniform("viewMatrix", viewMatrix);
+        lineShader.setUniform("viewMatrix", viewMatrix); // Model matrix is identity for lines in world space
         lineShader.setUniform("lineColor", color);
 
         FloatBuffer lineVertices = MemoryUtil.memAllocFloat(6);
@@ -185,14 +198,14 @@ public class Renderer {
 
         GL30.glBindVertexArray(lineVaoId);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, lineVboId);
-        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, lineVertices);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, lineVertices); // Update buffer data
 
         float originalLineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
-        GL11.glLineWidth(config.getHookLineWidth());
+        GL11.glLineWidth(config.getHookLineWidth()); // Set desired line width
 
-        GL11.glDrawArrays(GL11.GL_LINES, 0, 2);
+        GL11.glDrawArrays(GL11.GL_LINES, 0, 2); // Draw 2 vertices to make a line
 
-        GL11.glLineWidth(originalLineWidth);
+        GL11.glLineWidth(originalLineWidth); // Reset to original line width
 
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
@@ -211,12 +224,8 @@ public class Renderer {
         if (entityRenderer != null) {
             entityRenderer.cleanup();
         }
-        if (lineVaoId != 0) {
-            GL30.glDeleteVertexArrays(lineVaoId);
-        }
-        if (lineVboId != 0) {
-            GL15.glDeleteBuffers(lineVboId);
-        }
+        if (lineVaoId != 0) GL30.glDeleteVertexArrays(lineVaoId);
+        if (lineVboId != 0) GL15.glDeleteBuffers(lineVboId);
     }
 
     public ModelRenderer getEntityRenderer() {

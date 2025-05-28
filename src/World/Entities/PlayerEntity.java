@@ -600,7 +600,7 @@ public class PlayerEntity extends LivingEntity {
     }
 
     @Override
-    protected void createModelData() {
+    protected void populateModelComponents() {
 
     }
 
