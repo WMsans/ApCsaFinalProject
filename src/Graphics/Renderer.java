@@ -157,8 +157,7 @@ public class Renderer {
                             GL11.glDrawElements(GL11.GL_TRIANGLES, component.model().getIndexCount(), GL11.GL_UNSIGNED_INT, 0);
                             GL30.glBindVertexArray(0);
                         } else {
-                            // Logic for models using a different shader (e.g. a custom shader for ChromeSentinel's lights)
-                            // For now, assume all use entityShader
+                            // Logic for models using a different shader
                         }
                     }
                 }

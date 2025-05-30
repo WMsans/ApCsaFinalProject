@@ -123,6 +123,24 @@ public class EntityModel {
         };
         return new EntityModel(vertices, indices);
     }
+    public static EntityModel createQuadModel(float size, Vector3f color) {
+        float halfSize = size / 2.0f;
+        // Vertices for a quad in the XY plane, centered at origin
+        // Will be rotated by the model matrix to face the camera
+        float[] vertices = {
+                // Position (x,y,z), Color (r,g,b)
+                -halfSize, -halfSize, 0.0f, color.x, color.y, color.z, // Bottom-left
+                halfSize, -halfSize, 0.0f, color.x, color.y, color.z, // Bottom-right
+                halfSize,  halfSize, 0.0f, color.x, color.y, color.z, // Top-right
+                -halfSize,  halfSize, 0.0f, color.x, color.y, color.z  // Top-left
+        };
+
+        int[] indices = {
+                0, 1, 2, // First triangle
+                2, 3, 0  // Second triangle
+        };
+        return new EntityModel(vertices, indices);
+    }
     public static EntityModel createCuboidModel(float width, float height, float depth, Vector3f color) {
         float halfWidth = width / 2.0f;
         float halfHeight = height / 2.0f;

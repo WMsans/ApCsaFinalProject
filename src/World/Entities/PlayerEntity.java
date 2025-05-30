@@ -50,21 +50,25 @@ public class PlayerEntity extends LivingEntity {
     private final float maxCameraRoll = 30.0f;
     private final float cameraRollSpeed = 15.0f;
 
+    private float particleSpawnCooldown = 0.0f;
+    private final float PARTICLE_SPAWN_INTERVAL = 0.025f;
+    private ParticleSpawner particleSpawner;
+
     // Hook related fields
     private enum HookState {
         READY,      // Can shoot a new hook
         SHOT,       // Hook has been fired, traveling or waiting for attachment confirmation
-        STABILIZED, // Hook is attached to a block
+        STABILIZED, // Hook is attached to a block or entity
         RELEASING   // Hook is in the process of being released (for impulse, etc.)
     }
     private HookState currentHookState = HookState.READY;
     private Hook activeHook = null;
-    private Vector3f hookTargetPoint = null; // Point on block where hook is aimed/attached
+    private Vector3f hookTargetPoint = null;
     private float currentHookStringLength = 0.0f;
 
     private final float HOOK_MAX_RANGE = 128.0f; // Max distance hook can be shot
     private final float GAS_FORCE_MAGNITUDE = 60.0f; // Force applied when RELEASING gas (continuous)
-    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 14.0f; // Impulse when PRESSING space with hook (NEW)
+    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 14.0f; // Impulse when PRESSING space with hook
     private final float RELEASE_IMPULSE_MAGNITUDE = 18.0f; // Impulse when RELEASING a stabilized hook
     private final float HOOK_TENSION_CORRECTION_FACTOR = 0.8f; // How strongly to correct position/velocity due to tension
     private final float SIMILAR_DIRECTION_THRESHOLD = 0.7f; // Cosine of angle for speed retention logic (e.g., > cos(45 deg))
@@ -88,6 +92,8 @@ public class PlayerEntity extends LivingEntity {
         this.lastMouseX = input.getMouseX();
         this.lastMouseY = input.getMouseY();
         this.firstMouse = true;
+
+        this.particleSpawner = new ParticleSpawner(this.worldTerrain, this.camera);
     }
 
     public void update(float deltaTime, float currentTime) {
@@ -95,7 +101,6 @@ public class PlayerEntity extends LivingEntity {
             handleFlyModeToggle(currentTime);
         }
 
-        // Added: Set the flag for collision processing in Entity.java
         this.skipCollisionProcessing = isFlying && config.isDebugFlyModeEnabled();
 
         handleMouseLook();
@@ -106,19 +111,17 @@ public class PlayerEntity extends LivingEntity {
             handleCoyoteTime(deltaTime);
             jumpKeyHeld = input.isKeyDown(GLFW_KEY_SPACE);
         } else {
-            jumpKeyHeld = false; // Ensure jump logic doesn't interfere with flying
-            isOnGround = false;  // When flying, player is not on ground
-            // Flying logic will manage velocity, including vertical, in handleFlyingMovement
+            jumpKeyHeld = false;
+            isOnGround = false;
         }
 
-        handleKeyboardMovement(deltaTime,currentTime); // This updates velocity based on input
+        handleKeyboardMovement(deltaTime,currentTime);
 
-        // Hook tension can also affect velocity and position
         if (currentHookState == HookState.STABILIZED && activeHook != null && activeHook.isAttached()) {
             handleHookTension(deltaTime);
         }
 
-        float absoluteMaxSpeed = config.getFlySpeed(); // Cap speed before applying movement
+        float absoluteMaxSpeed = config.getFlySpeed();
         float currentSpeedSq = velocity.lengthSquared();
 
         if (currentSpeedSq > absoluteMaxSpeed * absoluteMaxSpeed) {
@@ -126,23 +129,15 @@ public class PlayerEntity extends LivingEntity {
             velocity.mul(absoluteMaxSpeed / currentSpeed);
         }
 
-        super.update(deltaTime, currentTime); // Entity.update -> applyGravity, moveEntity, updateLogic
+        super.update(deltaTime, currentTime);
 
-        // Calculate and apply camera roll if enabled and player is in air and moving
         if (config.isEnablePlayerAirRoll() && !isOnGround && velocity.lengthSquared() > 100f) {
             Vector3f playerVelocityXZ = new Vector3f(velocity.x, 0, velocity.z);
-            if (playerVelocityXZ.lengthSquared() > 0.01f) { // Only roll if there's horizontal movement
+            if (playerVelocityXZ.lengthSquared() > 0.01f) {
                 playerVelocityXZ.normalize();
-
-                Vector3f cameraRightXZ = camera.getRightDirection(false).normalize(); // Get XZ right vector of camera
-
-                // Determine if player is moving left or right relative to camera's facing direction
+                Vector3f cameraRightXZ = camera.getRightDirection(false).normalize();
                 float relativeMovementDot = playerVelocityXZ.dot(cameraRightXZ);
-                // positive dot means moving right, negative means moving left
-
-                float targetRoll = -relativeMovementDot * maxCameraRoll; // Negative because right movement = clockwise roll
-
-                // Smoothly interpolate to the target roll
+                float targetRoll = -relativeMovementDot * maxCameraRoll;
                 if (currentCameraRoll < targetRoll) {
                     currentCameraRoll += cameraRollSpeed * deltaTime;
                     if (currentCameraRoll > targetRoll) currentCameraRoll = targetRoll;
@@ -152,7 +147,6 @@ public class PlayerEntity extends LivingEntity {
                 }
             }
         } else {
-            // Smoothly return to zero roll if on ground or not moving
             if (currentCameraRoll > 0.01f) {
                 currentCameraRoll -= cameraRollSpeed * deltaTime;
                 if (currentCameraRoll < 0) currentCameraRoll = 0;
@@ -187,11 +181,10 @@ public class PlayerEntity extends LivingEntity {
         for (Block block : nearbyBlocks) {
             CustomAABB blockBox = CustomAABB.forBlock(block.getPosition());
             if (playerBox.testAABB(blockBox)) {
-                // Check if the intersection volume is significant (optional, simple check is often enough)
-                return true; // Player is intersecting with a block
+                return true;
             }
         }
-        return false; // No intersection found
+        return false;
     }
 
 
@@ -204,15 +197,10 @@ public class PlayerEntity extends LivingEntity {
         );
         CustomAABB testBox = new CustomAABB(localBoundingBox.min, localBoundingBox.max);
 
-        // Search pattern: spiral outwards and upwards
         for (int attempt = 0; attempt < MAX_STUCK_RECOVERY_ATTEMPTS; attempt++) {
             float currentSearchRadius = STUCK_RECOVERY_SEARCH_RADIUS_INCREMENT * (attempt +1);
-            // Check cardinal directions, then diagonals, then move up/down
-            // This is a simplified search; a more robust one might use a spiral or expanding shell.
-
-            // Check points on an expanding cylinder, prioritizing positions above the current one.
-            for (float yOffset = 0; yOffset <= currentSearchRadius * 2; yOffset += entityDimensions.y / 2.0f) { // Search upwards first
-                for (float angle = 0; angle < 360; angle += 45) { // Check around the player
+            for (float yOffset = 0; yOffset <= currentSearchRadius * 2; yOffset += entityDimensions.y / 2.0f) {
+                for (float angle = 0; angle < 360; angle += 45) {
                     float rad = (float) Math.toRadians(angle);
                     float xOffset = (float) Math.cos(rad) * currentSearchRadius;
                     float zOffset = (float) Math.sin(rad) * currentSearchRadius;
@@ -221,7 +209,6 @@ public class PlayerEntity extends LivingEntity {
                     testBox = localBoundingBox.translate(testPos);
 
                     boolean collision = false;
-                    // Need to get blocks around testPos now
                     List<Block> candidateBlocks = worldTerrain.getBlocksForCollision(testPos, entityDimensions);
                     for (Block block : candidateBlocks) {
                         CustomAABB blockAABB = CustomAABB.forBlock(block.getPosition());
@@ -231,15 +218,13 @@ public class PlayerEntity extends LivingEntity {
                         }
                     }
                     if (!collision) {
-                        // Check if space below is solid enough to stand on (optional, but good)
-                        Vector3f posBelow = new Vector3f(testPos).sub(0, entityDimensions.y / 2f + 0.1f, 0); // Check slightly below feet
-                        if(worldTerrain.isBlockAt(posBelow) || worldTerrain.isBlockAt(new Vector3f(testPos).sub(0,0.1f,0))) { // Check if ground is there.
+                        Vector3f posBelow = new Vector3f(testPos).sub(0, entityDimensions.y / 2f + 0.1f, 0);
+                        if(worldTerrain.isBlockAt(posBelow) || worldTerrain.isBlockAt(new Vector3f(testPos).sub(0,0.1f,0))) {
                             return testPos;
                         }
                     }
                 }
             }
-            // If still no spot, try searching downwards a bit as a last resort before expanding radius too much
             if(attempt > MAX_STUCK_RECOVERY_ATTEMPTS / 2) {
                 for (float yOffset = -entityDimensions.y / 2.0f; yOffset >= -currentSearchRadius; yOffset -= entityDimensions.y / 2.0f) {
                     for (float angle = 0; angle < 360; angle += 45) {
@@ -257,22 +242,21 @@ public class PlayerEntity extends LivingEntity {
                                 break;
                             }
                         }
-                        if (!collision) return testPos; // Less stringent check for downwards, might be in air
+                        if (!collision) return testPos;
                     }
                 }
             }
         }
-        return null; // No safe spot found within attempts
+        return null;
     }
 
 
     private void handleFlyModeToggle(float currentTime) {
-        // Don't toggle fly if hooked and space is pressed (as space might be for gas impulse/release)
         if (input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState != HookState.STABILIZED) {
             if (lastSpacePressTime > 0 && (currentTime - lastSpacePressTime) < DOUBLE_SPACE_PRESS_INTERVAL) {
                 isFlying = !isFlying;
                 if (isFlying) {
-                    velocity.y = 0; // Reset vertical velocity when starting to fly
+                    velocity.y = 0;
                     isOnGround = false;
                     System.out.println("Fly mode: ON");
                 } else {
@@ -335,24 +319,24 @@ public class PlayerEntity extends LivingEntity {
     }
 
     private void handleFlyingMovement(float deltaTime) {
-        velocity.zero(); // Reset velocity for direct control
+        velocity.zero();
         Vector3f flyDirection = new Vector3f(0,0,0);
-        Vector3f camForward = camera.getForwardDirection(false); // Use true 3D forward for flying
-        Vector3f camRight = camera.getRightDirection(false);   // Use true 3D right for flying
-        Vector3f worldUp = new Vector3f(0, 1, 0);             // Use world up for space/shift
+        Vector3f camForward = camera.getForwardDirection(true); // Use true for flying
+        Vector3f camRight = camera.getRightDirection(true);   // Use true for flying
+        Vector3f worldUp = new Vector3f(0, 1, 0);
 
         if (input.isKeyDown(GLFW_KEY_W)) flyDirection.add(camForward);
         if (input.isKeyDown(GLFW_KEY_S)) flyDirection.sub(camForward);
         if (input.isKeyDown(GLFW_KEY_A)) flyDirection.sub(camRight);
         if (input.isKeyDown(GLFW_KEY_D)) flyDirection.add(camRight);
-        if (input.isKeyDown(GLFW_KEY_SPACE)) flyDirection.add(worldUp); // Fly up along world Y
-        if (input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) flyDirection.sub(worldUp); // Fly down along world Y
+        if (input.isKeyDown(GLFW_KEY_SPACE)) flyDirection.add(worldUp);
+        if (input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) flyDirection.sub(worldUp);
 
         if (flyDirection.lengthSquared() > 0) {
             flyDirection.normalize();
             velocity.set(flyDirection.mul(config.getFlySpeed()));
         }
-        isOnGround = false; // Explicitly set isOnGround to false when flying
+        isOnGround = false;
     }
 
     private void handleWalkingAndGasMovement(float deltaTime, float currentTime) {
@@ -426,6 +410,28 @@ public class PlayerEntity extends LivingEntity {
         if (input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround && currentHookState == HookState.STABILIZED && !isFlying) {
             Vector3f gasForceDirection = camera.getForwardDirection(true);
             addVelocity(gasForceDirection.mul(GAS_FORCE_MAGNITUDE * deltaTime).add(0, GAS_FORCE_MAGNITUDE * deltaTime * 0.8f, 0));
+
+            particleSpawnCooldown -= deltaTime;
+            if (particleSpawnCooldown <= 0) {
+                Vector3f particleOrigin = new Vector3f(this.position);
+                // Optional: Slightly offset the particle origin if needed
+                // particleOrigin.add(new Vector3f(camera.getForwardDirection(true)).mul(-0.3f)); // Example offset
+
+                int particleCount = 3 + randomGenerator.nextInt(2); // 3 or 4 particles
+                float burstSpeed = 0.2f + randomGenerator.nextFloat() * 0.3f; // Small outward speed (e.g., 0.2 to 0.5)
+
+                particleSpawner.spawnBurst(
+                        particleOrigin,
+                        particleCount,
+                        burstSpeed,
+                        3.0f,                // Lifespan of 3 seconds
+                        0.0f,                // No gravity effect for these gas particles
+                        new Vector3f(1,1,1), // White color
+                        0.1f,               // Size of the particle sprite
+                        new Vector3f(0,0,0)  // No additional base velocity for the burst
+                );
+                particleSpawnCooldown = PARTICLE_SPAWN_INTERVAL;
+            }
         }
 
         if (jumpBufferTimer > 0 && !(input.isKeyDown(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying)) {
@@ -441,7 +447,7 @@ public class PlayerEntity extends LivingEntity {
 
     @Override
     protected void applyGravity(float deltaTime) {
-        if (isFlying && config.isDebugFlyModeEnabled()) { // This condition is now checked in Entity.applyGravity via skipCollisionProcessing
+        if (isFlying && config.isDebugFlyModeEnabled()) {
             return;
         }
 
@@ -450,11 +456,10 @@ public class PlayerEntity extends LivingEntity {
                 !(currentHookState == HookState.STABILIZED && input.isKeyDown(GLFW_KEY_SPACE) && !isOnGround)) {
             currentGravity *= config.getJumpEndEarlyGravityModifier();
         }
-
-        if (!isOnGround) { // This part is now effectively managed by Entity.applyGravity if skipCollisionProcessing is false
+        if (!isOnGround) {
             velocity.y -= currentGravity * deltaTime;
-            if (velocity.y < -config.getMaxFallSpeed()) {
-                velocity.y = -config.getMaxFallSpeed();
+            if (velocity.y < -DEFAULT_TERMINAL_VELOCITY) {
+                velocity.y = -DEFAULT_TERMINAL_VELOCITY;
             }
         } else if (velocity.y < 0) {
             velocity.y = 0;
@@ -465,7 +470,9 @@ public class PlayerEntity extends LivingEntity {
         if (input.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT) && currentHookState == HookState.READY) {
             Vector3f rayOrigin = camera.getPosition();
             Vector3f rayDirection = camera.getForwardDirection(true);
+
             Block targetedBlock = null;
+            LivingEntity targetedEntity = null;
             Vector3f intersectionPoint = new Vector3f();
             float closestDistance = HOOK_MAX_RANGE + 0.1f;
 
@@ -481,36 +488,68 @@ public class PlayerEntity extends LivingEntity {
                     if (nearFarIntersection.x >= 0 && nearFarIntersection.x <= HOOK_MAX_RANGE) {
                         closestDistance = nearFarIntersection.x;
                         targetedBlock = block;
+                        intersectionPoint.set(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
                     }
                 }
             }
 
-            if (targetedBlock != null) {
-                hookTargetPoint = new Vector3f(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
+            List<Entity> allEntities = worldTerrain.getEntities();
+            for (Entity entity : allEntities) {
+                if (entity == this || entity == activeHook || !(entity instanceof LivingEntity) || !entity.isValid()) {
+                    continue;
+                }
+                if (entity instanceof Bullet) { // Do not allow hooking bullets
+                    continue;
+                }
+
+                LivingEntity livingTarget = (LivingEntity) entity;
+                CustomAABB entityAABB = livingTarget.getBoundingBoxWorld();
+                Vector2f entityIntersection = new Vector2f(); // Use a new Vector2f for entity intersection
+
+                if (entityAABB.intersectRay(rayOrigin, rayDirection, entityIntersection)) {
+                    if (entityIntersection.x >= 0 && entityIntersection.x < closestDistance && entityIntersection.x <= HOOK_MAX_RANGE) {
+                        closestDistance = entityIntersection.x;
+                        targetedEntity = livingTarget;
+                        targetedBlock = null; // Entity takes precedence
+                        intersectionPoint.set(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
+                    }
+                }
+            }
+
+            if (targetedEntity != null) {
+                hookTargetPoint = new Vector3f(intersectionPoint);
                 activeHook = new Hook(this, worldTerrain, hookTargetPoint);
                 worldTerrain.addEntity(activeHook);
-
+                currentHookStringLength = this.position.distance(hookTargetPoint);
+                activeHook.attachToEntity(targetedEntity, hookTargetPoint, currentHookStringLength);
+                currentHookState = HookState.STABILIZED;
+                // System.out.println("Hook attached to entity: " + targetedEntity.getId());
+            } else if (targetedBlock != null) {
+                hookTargetPoint = new Vector3f(intersectionPoint);
+                activeHook = new Hook(this, worldTerrain, hookTargetPoint);
+                worldTerrain.addEntity(activeHook);
                 currentHookStringLength = this.position.distance(hookTargetPoint);
                 activeHook.attach(targetedBlock, hookTargetPoint, currentHookStringLength);
                 currentHookState = HookState.STABILIZED;
+                // System.out.println("Hook attached to block at: " + hookTargetPoint);
             }
         }
 
         if (!input.isMouseButtonDown(GLFW_MOUSE_BUTTON_RIGHT) && (currentHookState == HookState.STABILIZED || currentHookState == HookState.SHOT)) {
             if (activeHook != null) {
                 boolean wasStabilized = activeHook.isAttached();
-                activeHook.detach();
+                activeHook.detach(); // This will call onHookReleased and set state to READY
 
-                if (wasStabilized) {
+                if (wasStabilized && !isFlying) { // Only apply impulse if not in fly mode
                     Vector3f impulseDirection = new Vector3f(velocity).normalize();
                     if (impulseDirection.lengthSquared() == 0 && camera != null) {
                         impulseDirection = camera.getForwardDirection(true);
                     }
                     if (impulseDirection.lengthSquared() > 0) {
-                        addVelocity(impulseDirection.mul(RELEASE_IMPULSE_MAGNITUDE).add(0, RELEASE_IMPULSE_MAGNITUDE, 0));
+                        addVelocity(impulseDirection.mul(RELEASE_IMPULSE_MAGNITUDE).add(0, RELEASE_IMPULSE_MAGNITUDE * 0.5f, 0)); // Reduced upward component
                     }
                 }
-            } else {
+            } else { // Should not happen if activeHook.detach() works correctly
                 currentHookState = HookState.READY;
             }
         }
@@ -524,7 +563,13 @@ public class PlayerEntity extends LivingEntity {
     }
 
     private void handleHookTension(float deltaTime) {
-        if (activeHook == null || !activeHook.isAttached() || hookTargetPoint == null) return;
+        if (activeHook == null || !activeHook.isAttached()) return; // No active or attached hook
+
+        hookTargetPoint = activeHook.getAttachedPoint(); // Get current (potentially dynamic) attach point
+        if (hookTargetPoint == null) { // Entity might have become invalid
+            activeHook.detach();
+            return;
+        }
 
         Vector3f playerPos = getPosition();
         Vector3f toHook = new Vector3f(hookTargetPoint).sub(playerPos);
@@ -539,7 +584,6 @@ public class PlayerEntity extends LivingEntity {
             Vector3f pullDirection = toHook.normalize();
             Vector3f correctedPosition = new Vector3f(hookTargetPoint).sub(new Vector3f(pullDirection).mul(currentHookStringLength));
 
-            // Before applying corrected position, check if it would cause player to be stuck
             CustomAABB futurePlayerBox = localBoundingBox.translate(correctedPosition);
             boolean wouldBeStuck = false;
             Vector3f entityDimensions = new Vector3f(
@@ -558,12 +602,10 @@ public class PlayerEntity extends LivingEntity {
             }
 
             if (wouldBeStuck) {
-                // Player would be pulled into a block. Detach hook or stop pulling.
-                activeHook.detach(); // This will set currentHookState to READY via onHookReleased
-                return; // Stop further tension logic for this frame
+                activeHook.detach();
+                return;
             }
 
-            // If not stuck, apply correction
             this.position.set(correctedPosition);
 
             float radialVelocityMagnitude = velocity.dot(pullDirection);

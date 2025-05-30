@@ -1,6 +1,7 @@
 import Graphics.ModelComponent;
 import Graphics.Renderer;
 import Graphics.Window;
+import World.Entities.Enemies.ChromeSentinel;
 import World.Entities.PlayerEntity;
 import World.Entities.Entity;
 import World.Terrain.*;
@@ -138,6 +139,11 @@ public class Main implements Runnable {
         Vector3f playerStartPosition = findSafeSpawnLocation();
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
         terrain.addEntity(playerEntity); // Add player to terrain's entity list
+
+        // Add test enemy
+        Vector3f sentinelPosition = new Vector3f(playerStartPosition).add(5, 5, 5); // Offset from player
+        ChromeSentinel sentinel = new ChromeSentinel(terrain, sentinelPosition);
+        terrain.addEntity(sentinel);
 
         // Initialize renderer
         renderer = new Renderer(playerEntity.getCamera(), config);
