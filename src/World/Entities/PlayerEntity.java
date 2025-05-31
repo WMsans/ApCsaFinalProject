@@ -54,6 +54,14 @@ public class PlayerEntity extends LivingEntity {
     private final float PARTICLE_SPAWN_INTERVAL = 0.025f;
     private ParticleSpawner particleSpawner;
 
+    private float slashCooldownTimer = 0.0f;
+    private static final float SLASH_COOLDOWN = 0.3f; // seconds
+    private static final float SLASH_DASH_SPEED_ENEMY = 100.0f; // Speed when dashing to an enemy
+    private static final float SLASH_DASH_IMPULSE_FORWARD = 15.0f; // Impulse strength when dashing forward
+    private static final float TARGETED_DASH_ENEMY_DETECTION_RANGE = 70.0f; // How close an enemy needs to be for a targeted dash
+    // Updated SLASH_DIMENSIONS for a large cube surrounding the player
+    private static final Vector3f SLASH_DIMENSIONS = new Vector3f(6.0f, 6.0f, 6.0f);
+
     // Hook related fields
     private enum HookState {
         READY,      // Can shoot a new hook
@@ -66,9 +74,9 @@ public class PlayerEntity extends LivingEntity {
     private Vector3f hookTargetPoint = null;
     private float currentHookStringLength = 0.0f;
 
-    private final float HOOK_MAX_RANGE = 128.0f; // Max distance hook can be shot
+    private final float HOOK_MAX_RANGE = 100.0f; // Max distance hook can be shot
     private final float GAS_FORCE_MAGNITUDE = 60.0f; // Force applied when RELEASING gas (continuous)
-    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 14.0f; // Impulse when PRESSING space with hook
+    private final float GAS_IMPULSE_ON_PRESS_MAGNITUDE = 20.0f; // Impulse when PRESSING space with hook
     private final float RELEASE_IMPULSE_MAGNITUDE = 18.0f; // Impulse when RELEASING a stabilized hook
     private final float HOOK_TENSION_CORRECTION_FACTOR = 0.8f; // How strongly to correct position/velocity due to tension
     private final float SIMILAR_DIRECTION_THRESHOLD = 0.7f; // Cosine of angle for speed retention logic (e.g., > cos(45 deg))
@@ -76,6 +84,7 @@ public class PlayerEntity extends LivingEntity {
     private static final float STUCK_RECOVERY_SEARCH_RADIUS_INCREMENT = 0.5f; // How much to expand search radius each attempt
     private static final float RELEASE_GAS_TIME = 0.5f; // Time between applying gas impulse
 
+    private static final float SLASH_LIFESPAN = 0.3f; // seconds
 
     public PlayerEntity(Input input, Window window, BaseTerrainGenerator worldTerrain, Vector3f initialPosition, Config config) {
         super(worldTerrain, initialPosition, new Vector3f(0.6f, 1.8f, 0.6f), 20.0f);
@@ -105,6 +114,7 @@ public class PlayerEntity extends LivingEntity {
 
         handleMouseLook();
         handleHookInput(deltaTime);
+        handleAttackInput(deltaTime);
 
         if (!isFlying || !config.isDebugFlyModeEnabled()) {
             handleJumpBuffering(deltaTime);
@@ -162,6 +172,71 @@ public class PlayerEntity extends LivingEntity {
         Vector3f currentEyePosition = new Vector3f(this.position).add(0, getEyeHeight(), 0);
         this.camera.setPosition(currentEyePosition);
         this.camera.setYaw(this.yaw);
+    }
+
+    private void handleAttackInput(float deltaTime) {
+        if (slashCooldownTimer > 0) {
+            slashCooldownTimer -= deltaTime;
+        }
+
+        if (input.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT) && slashCooldownTimer <= 0) {
+            slashCooldownTimer = SLASH_COOLDOWN;
+
+            LivingEntity targetEnemy = findClosestEnemyForTargetedDash();
+
+            if (targetEnemy != null) {
+                // Dash towards the enemy
+                Vector3f directionToEnemy = new Vector3f(targetEnemy.getPosition()).sub(this.position).normalize();
+                if (directionToEnemy.lengthSquared() > 0.001f) { // Ensure direction is valid
+                    this.velocity.set(directionToEnemy.mul(SLASH_DASH_SPEED_ENEMY));
+                } else { // Fallback if already at the same position (should be rare)
+                    this.velocity.set(camera.getForwardDirection(true).mul(SLASH_DASH_SPEED_ENEMY));
+                }
+            } else {
+                // Dash forward (impulse)
+                Vector3f forwardDir = camera.getForwardDirection(true);
+                this.addVelocity(new Vector3f(forwardDir).mul(SLASH_DASH_IMPULSE_FORWARD));
+                this.isOnGround = false;
+            }
+
+            // Spawn Slash Entity, centered on the player
+            Slash slash = new Slash(
+                    this.worldTerrain,
+                    this.camera,
+                    this,
+                    this.getPosition(), // Initial position at player's current location
+                    SLASH_DIMENSIONS,    // Large hitbox dimensions
+                    SLASH_LIFESPAN,      // Defined in PlayerEntity, assuming it exists (0.3f in example)
+                    this.particleSpawner
+            );
+            worldTerrain.addEntity(slash);
+        }
+    }
+
+    // Add this new helper method to PlayerEntity.java:
+    private LivingEntity findClosestEnemyForTargetedDash() {
+        LivingEntity closestEnemy = null;
+        float minDistanceSq = TARGETED_DASH_ENEMY_DETECTION_RANGE * TARGETED_DASH_ENEMY_DETECTION_RANGE;
+
+        List<Entity> entities = worldTerrain.getEntities();
+        for (Entity entity : entities) {
+            // Ensure we are checking against valid, living enemies, not the player, and not other utility entities.
+            if (entity instanceof Enemy && entity.isValid() && entity != this) {
+                Vector3f directionToEntity = new Vector3f(entity.getPosition()).sub(this.position);
+                float distSq = directionToEntity.lengthSquared();
+
+                if (distSq < minDistanceSq) {
+                    Vector3f entityDirectionNormalized = new Vector3f(directionToEntity).normalize();
+                    Vector3f forwardDir = camera.getForwardDirection(true);
+                    // Check if the enemy is roughly in front of the player (e.g., within a ~120 degree cone)
+                    if (entityDirectionNormalized.dot(forwardDir) > 0.5) {
+                        minDistanceSq = distSq;
+                        closestEnemy = (LivingEntity) entity;
+                    }
+                }
+            }
+        }
+        return closestEnemy;
     }
 
     @Override
@@ -399,7 +474,7 @@ public class PlayerEntity extends LivingEntity {
 
         if(input.isKeyPressed(GLFW_KEY_SPACE) && currentHookState == HookState.STABILIZED && !isOnGround && !isFlying && currentTime - lastReleaseGameTime > RELEASE_GAS_TIME){
             Vector3f camForward = camera.getForwardDirection(true);
-            addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(activeHook.getAttachedPoint().sub(getPosition()).normalize().mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE)));
+            addVelocity(camForward.mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE).add(activeHook.getPosition().sub(getPosition()).normalize().mul(GAS_IMPULSE_ON_PRESS_MAGNITUDE)));
 
             isOnGround = false;
             coyoteTimer = 0;

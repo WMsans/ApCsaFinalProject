@@ -1,0 +1,7 @@
+#version 330 core
+layout (location = 0) in vec2 aPos; // 2D screen position
+uniform mat4 projection; // Orthographic projection matrix
+
+void main() {
+    gl_Position = projection * vec4(aPos.x, aPos.y, 0.0, 1.0);
+}

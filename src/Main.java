@@ -4,6 +4,7 @@ import Graphics.Window;
 import World.Entities.Enemies.ChromeSentinel;
 import World.Entities.PlayerEntity;
 import World.Entities.Entity;
+import World.Entities.Enemies.EnemySpawner;
 import World.Terrain.*;
 import Input.*;
 import Configuration.*;
@@ -28,6 +29,7 @@ public class Main implements Runnable {
     private Input input;
     private PlayerEntity playerEntity;
     private Config config;
+    private EnemySpawner enemySpawner;
 
     private final String windowTitle = "LWJGL Minecraft Prototype";
     private final int initialWidth = 1280;
@@ -134,24 +136,20 @@ public class Main implements Runnable {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
+        glEnable(GL_BLEND); // Enable blending for transparency (e.g. crosshair if it had alpha)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 
         terrain = GetTerrainGenerator();
         Vector3f playerStartPosition = findSafeSpawnLocation();
         playerEntity = new PlayerEntity(input, window, terrain, playerStartPosition, config);
-        terrain.addEntity(playerEntity); // Add player to terrain's entity list
 
-        // Add test enemy
-        Vector3f sentinelPosition = new Vector3f(playerStartPosition).add(5, 5, 5); // Offset from player
-        ChromeSentinel sentinel = new ChromeSentinel(terrain, sentinelPosition);
-        terrain.addEntity(sentinel);
+        enemySpawner = new EnemySpawner(terrain, playerEntity);
 
-        // Initialize renderer
-        renderer = new Renderer(playerEntity.getCamera(), config);
+        renderer = new Renderer(playerEntity.getCamera(), config, window); // Pass window to Renderer
 
-        // Initialize models for all entities
         for (Entity entity : terrain.getEntities()) {
-            // entity.initializeModel(renderer.getEntityRenderer()); // Old way
-            entity.initializeModels(renderer.getEntityRenderer()); // New way
+            entity.initializeModels(renderer.getEntityRenderer());
         }
     }
 
@@ -169,26 +167,28 @@ public class Main implements Runnable {
             input.pollEvents();
             if (input.isKeyPressed(GLFW_KEY_ESCAPE)) glfwSetWindowShouldClose(window.getWindowHandle(), true);
 
-            terrain.updateEntities(deltaTime, currentTime); // Hooks might be created here
+            playerEntity.update(deltaTime, currentTime);
+
+            if (enemySpawner != null) {
+                enemySpawner.update(deltaTime);
+            }
+
+            terrain.updateEntities(deltaTime, currentTime);
             terrain.processCompletedChunks();
             ChunkId currentPlayerChunkId = Chunk.getChunkIdAtWorldPosition(playerEntity.getPosition());
             terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks(), playerEntity);
 
-            List<Entity> currentEntities = terrain.getEntities(); // Get a stable list for this frame
+            List<Entity> currentEntities = terrain.getEntities();
 
-            // Initialize models for any new entities or entities whose VAOs aren't built
             for (Entity entity : currentEntities) {
                 if (!entity.isValid()) continue;
-
                 List<ModelComponent> components = entity.getModelComponents();
-                if (components.isEmpty() && entity.isValid()) { // If component list is empty, try to initialize
+                if (components.isEmpty() && entity.isValid()) {
                     entity.initializeModels(renderer.getEntityRenderer());
-                    components = entity.getModelComponents(); // re-fetch
+                    components = entity.getModelComponents();
                 }
-
                 for (ModelComponent mc : components) {
-                    if (mc.model() != null && mc.model().getVaoId() == 0) { // Check if VAO isn't built for this specific model
-                        // This implies populateModelComponents was called, but buildMesh wasn't or failed for this model
+                    if (mc.model() != null && mc.model().getVaoId() == 0) {
                         renderer.getEntityRenderer().buildMesh(mc.model());
                     }
                 }
@@ -197,6 +197,7 @@ public class Main implements Runnable {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderer.renderTerrain(terrain, playerEntity.getPosition());
             renderer.renderEntities(currentEntities, playerEntity.getCamera(), playerEntity);
+            renderer.renderCrosshair(); // Added crosshair rendering
             window.swapBuffers();
             glfwPollEvents();
         }
@@ -204,19 +205,18 @@ public class Main implements Runnable {
 
     private void cleanup() {
         if (renderer != null) renderer.cleanup();
-        // Clean up models for entities that are still in the list
         if (terrain != null) {
             for (Entity entity : terrain.getEntities()) {
                 if (!entity.isValid()) continue;
-
                 List<ModelComponent> components = entity.getModelComponents();
-                if (components.isEmpty() && entity.isValid()) { // If component list is empty, no need to cleanup
+                if (components.isEmpty() && entity.isValid()) {
                     continue;
                 }
-
                 for (ModelComponent mc : components)
                 {
                     if (mc.model() != null && mc.model().getVaoId() == 0) {
+                        mc.model().cleanup();
+                    } else if (mc.model() != null && mc.model().getVaoId() != 0) {
                         mc.model().cleanup();
                     }
                 }
