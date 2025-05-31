@@ -5,7 +5,7 @@ import World.Terrain.BaseTerrainGenerator;
 import World.Chunk.*;
 import World.Entities.Entity;
 import World.Entities.PlayerEntity;
-import World.Entities.Hook; // Keep for hook line rendering logic
+import World.Entities.Hook;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
@@ -21,7 +21,7 @@ public class Renderer {
 
     private Shader terrainShader;
     private Shader lineShader;
-    private Shader crosshairShader; // Added
+    private Shader crosshairShader;
     private Camera camera;
     private Config config;
     private float gammaValue;
@@ -29,20 +29,20 @@ public class Renderer {
     private ModelRenderer entityRenderer;
 
     private int lineVaoId, lineVboId;
-    private int crosshairVaoId, crosshairVboId; // Added
+    private int crosshairVaoId, crosshairVboId;
 
-    private Window window; // Added to get window dimensions for orthographic projection
+    private Window window;
 
-    public Renderer(Camera camera, Config config, Window window) { // Added window parameter
+    public Renderer(Camera camera, Config config, Window window) {
         this.camera = camera;
         this.config = config;
-        this.window = window; // Store window reference
-        this.gammaValue = config.getGamma();
+        this.window = window;
+        this.gammaValue = config.getGamma(); // Store gamma from config
         this.entityRenderer = new ModelRenderer();
         try {
             initTerrainShader();
             initLineShader();
-            initCrosshairShader(); // Added
+            initCrosshairShader();
             entityRenderer.init();
         } catch (Exception e) {
             System.err.println("Error initializing renderer:");
@@ -50,7 +50,7 @@ public class Renderer {
             System.exit(1);
         }
         initLineBuffers();
-        initCrosshairBuffers(); // Added
+        initCrosshairBuffers();
     }
 
     private void initTerrainShader() throws Exception {
@@ -65,6 +65,15 @@ public class Renderer {
         terrainShader.createUniform("lightColor");
         terrainShader.createUniform("gamma");
         terrainShader.createUniform("viewPos");
+
+        // Grid uniforms
+        terrainShader.createUniform("gridSpacing");
+        terrainShader.createUniform("gridLineWidth");
+        terrainShader.createUniform("gridIntensity");
+        terrainShader.createUniform("gridColorGround");
+        terrainShader.createUniform("gridColorMountain");
+        terrainShader.createUniform("gridTransitionHeight");
+        terrainShader.createUniform("gridTransitionRange");
     }
 
     private void initLineShader() throws Exception {
@@ -77,7 +86,7 @@ public class Renderer {
         lineShader.createUniform("lineColor");
     }
 
-    private void initCrosshairShader() throws Exception { // Added method
+    private void initCrosshairShader() throws Exception {
         crosshairShader = new Shader();
         crosshairShader.createVertexShader(Shader.loadResource("/shaders/crosshair_vertex.glsl"));
         crosshairShader.createFragmentShader(Shader.loadResource("/shaders/crosshair_fragment.glsl"));
@@ -102,13 +111,12 @@ public class Renderer {
         GL30.glBindVertexArray(0);
     }
 
-    private void initCrosshairBuffers() { // Added method
+    private void initCrosshairBuffers() {
         crosshairVaoId = GL30.glGenVertexArrays();
         GL30.glBindVertexArray(crosshairVaoId);
 
         crosshairVboId = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, crosshairVboId);
-        // Buffer for 4 vertices (2 lines for a '+'), each with 2 floats (x,y)
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, 4 * 2 * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
 
         GL20.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
@@ -125,10 +133,19 @@ public class Renderer {
         terrainShader.bind();
         terrainShader.setUniform("projectionMatrix", camera.getProjectionMatrix());
         terrainShader.setUniform("viewMatrix", camera.getViewMatrix());
-        terrainShader.setUniform("lightPos", camera.getPosition());
+        terrainShader.setUniform("lightPos", camera.getPosition()); // Simplified: light is at camera pos
         terrainShader.setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
-        terrainShader.setUniform("gamma", gammaValue);
+        terrainShader.setUniform("gamma", this.gammaValue); // Use stored gamma
         terrainShader.setUniform("viewPos", camera.getPosition());
+
+        // Set grid uniforms
+        terrainShader.setUniform("gridSpacing", config.getGridSpacing());
+        terrainShader.setUniform("gridLineWidth", config.getGridLineWidth());
+        terrainShader.setUniform("gridIntensity", config.getGridIntensity());
+        terrainShader.setUniform("gridColorGround", config.getGridColorGround());
+        terrainShader.setUniform("gridColorMountain", config.getGridColorMountain());
+        terrainShader.setUniform("gridTransitionHeight", config.getGridTransitionHeight());
+        terrainShader.setUniform("gridTransitionRange", config.getGridTransitionRange());
 
         ChunkId playerChunkId = Chunk.getChunkIdAtWorldPosition(playerPosition);
         int renderDist = config.getRenderDistanceInChunks();
@@ -143,6 +160,7 @@ public class Renderer {
                         ChunkId currentChunkId = new ChunkId(playerChunkId.x + dx, playerChunkId.y + dy, playerChunkId.z + dz);
                         Chunk chunkToRender = terrain.getChunk(currentChunkId);
                         if (chunkToRender != null) {
+                            // Frustum culling (optional, can be intensive if AABB is complex or many chunks)
                             // if (!camera.isAABBInFrustum(chunkToRender.getAABB())) {
                             // continue;
                             // }
@@ -167,6 +185,12 @@ public class Renderer {
         entityRenderer.getEntityShader().bind();
         entityRenderer.getEntityShader().setUniform("viewMatrix", viewMatrix);
         entityRenderer.getEntityShader().setUniform("projectionMatrix", projectionMatrix);
+        // Potentially set lighting/gamma uniforms for entities if their shader uses them
+        // entityRenderer.getEntityShader().setUniform("lightPos", cam.getPosition());
+        // entityRenderer.getEntityShader().setUniform("lightColor", new Vector3f(1.0f, 1.0f, 1.0f));
+        // entityRenderer.getEntityShader().setUniform("gamma", this.gammaValue);
+        // entityRenderer.getEntityShader().setUniform("viewPos", cam.getPosition());
+
 
         for (Entity entity : entities) {
             if (entity.isValid()) {
@@ -174,20 +198,20 @@ public class Renderer {
                 List<ModelComponent> components = entity.getModelComponents();
 
                 if (components.isEmpty() && entity.isValid()) {
-                    entity.initializeModels(entityRenderer);
+                    entity.initializeModels(entityRenderer); // ensure models are built if not already
                     components = entity.getModelComponents();
                 }
 
                 for (ModelComponent component : components) {
                     if (component.model() != null && component.model().getVaoId() != 0) {
-                        if (component.usesEntityShader()) {
+                        if (component.usesEntityShader()) { // Check if this component should use the main entity shader
                             Matrix4f finalModelMatrix = new Matrix4f(entityBaseTransform).mul(component.localTransform());
                             entityRenderer.getEntityShader().setUniform("modelMatrix", finalModelMatrix);
                             GL30.glBindVertexArray(component.model().getVaoId());
                             GL11.glDrawElements(GL11.GL_TRIANGLES, component.model().getIndexCount(), GL11.GL_UNSIGNED_INT, 0);
                             GL30.glBindVertexArray(0);
                         } else {
-                            // Logic for models using a different shader
+                            // Logic for models using a different shader (if any)
                         }
                     }
                 }
@@ -195,17 +219,20 @@ public class Renderer {
         }
         entityRenderer.getEntityShader().unbind();
 
+        // Hook line rendering
         if (player != null && player.getActiveHook() != null && player.getActiveHook().isAttached()) {
             Hook currentPlayersHook = player.getActiveHook();
-            Vector3f hookActualAttachPoint = currentPlayersHook.getPosition();
+            Vector3f hookActualAttachPoint = currentPlayersHook.getPosition(); // Hook's own position is its attach point when attached
 
             if (hookActualAttachPoint != null) {
-                Vector3f camLeft = camera.getRightDirection(true).mul(-0.2f);
+                // Calculate start position relative to camera (e.g., from player's "hand" view)
+                Vector3f camLeft = camera.getRightDirection(true).mul(-0.2f); // Offset to the left
                 Vector3f camUp = new Vector3f();
-                camera.getForwardDirection(true).cross(camera.getRightDirection(true), camUp);
+                camera.getForwardDirection(true).cross(camera.getRightDirection(true), camUp); // Calculate actual up
                 camUp.normalize();
-                Vector3f camDown = new Vector3f(camUp).mul(0.2f);
-                Vector3f camForwardOffset = camera.getForwardDirection(true).mul(0.3f);
+                Vector3f camDown = new Vector3f(camUp).mul(0.2f); // Offset downwards
+                Vector3f camForwardOffset = camera.getForwardDirection(true).mul(0.3f); // Offset forwards
+
                 Vector3f lineStartPos = new Vector3f(camera.getPosition()).add(camLeft).add(camDown).add(camForwardOffset);
 
                 renderLine(lineStartPos, hookActualAttachPoint, new Vector3f(0.8f, 0.8f, 0.8f), viewMatrix, projectionMatrix);
@@ -228,11 +255,13 @@ public class Renderer {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, lineVboId);
         GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, lineVertices);
 
+        // Store original line width and set desired width
         float originalLineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
-        GL11.glLineWidth(config.getHookLineWidth());
+        GL11.glLineWidth(config.getHookLineWidth()); // Get from config
 
         GL11.glDrawArrays(GL11.GL_LINES, 0, 2);
 
+        // Restore original line width
         GL11.glLineWidth(originalLineWidth);
 
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
@@ -241,7 +270,7 @@ public class Renderer {
         lineShader.unbind();
     }
 
-    public void renderCrosshair() { // Added method
+    public void renderCrosshair() {
         float crosshairSize = 10.0f; // Screen pixels
         float screenCenterX = window.getWidth() / 2.0f;
         float screenCenterY = window.getHeight() / 2.0f;
@@ -250,9 +279,9 @@ public class Renderer {
 
         Matrix4f orthoProjection = new Matrix4f().ortho(0.0f, window.getWidth(), window.getHeight(), 0.0f, -1.0f, 1.0f);
         crosshairShader.setUniform("projection", orthoProjection);
-        crosshairShader.setUniform("crosshairColor", new Vector3f(1.0f, 1.0f, 1.0f)); // White crosshair
+        crosshairShader.setUniform("crosshairColor", new Vector3f(1.0f, 1.0f, 1.0f));
 
-        FloatBuffer crosshairVertices = MemoryUtil.memAllocFloat(4 * 2); // 4 points, 2 coords each
+        FloatBuffer crosshairVertices = MemoryUtil.memAllocFloat(4 * 2);
         // Horizontal line
         crosshairVertices.put(screenCenterX - crosshairSize).put(screenCenterY);
         crosshairVertices.put(screenCenterX + crosshairSize).put(screenCenterY);
@@ -265,8 +294,8 @@ public class Renderer {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, crosshairVboId);
         GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, crosshairVertices);
 
-        GL11.glLineWidth(2.0f); // Crosshair line width
-        GL11.glDrawArrays(GL11.GL_LINES, 0, 4); // Draw 2 lines (4 vertices)
+        GL11.glLineWidth(2.0f);
+        GL11.glDrawArrays(GL11.GL_LINES, 0, 4);
 
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
@@ -278,13 +307,13 @@ public class Renderer {
     public void cleanup() {
         if (terrainShader != null) terrainShader.cleanup();
         if (lineShader != null) lineShader.cleanup();
-        if (crosshairShader != null) crosshairShader.cleanup(); // Added
+        if (crosshairShader != null) crosshairShader.cleanup();
         if (entityRenderer != null) entityRenderer.cleanup();
 
         if (lineVaoId != 0) GL30.glDeleteVertexArrays(lineVaoId);
         if (lineVboId != 0) GL15.glDeleteBuffers(lineVboId);
-        if (crosshairVaoId != 0) GL30.glDeleteVertexArrays(crosshairVaoId); // Added
-        if (crosshairVboId != 0) GL15.glDeleteBuffers(crosshairVboId); // Added
+        if (crosshairVaoId != 0) GL30.glDeleteVertexArrays(crosshairVaoId);
+        if (crosshairVboId != 0) GL15.glDeleteBuffers(crosshairVboId);
     }
 
     public ModelRenderer getEntityRenderer() {
