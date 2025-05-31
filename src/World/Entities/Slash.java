@@ -106,22 +106,44 @@ public class Slash extends Entity {
         for (Entity entity : entities) {
             if (entity instanceof Enemy && entity.isValid() && !hitEnemies.contains(entity.getId())) {
                 Enemy enemy = (Enemy) entity;
-                if (slashHitbox.testAABB(enemy.getBoundingBoxWorld())) {
-                    enemy.kill(); // "Kill" the enemy
-                    hitEnemies.add(enemy.getId()); // Mark as hit
+                if (slashHitbox.testAABB(enemy.getBoundingBoxWorld())) { // Broad phase collision
+                    boolean hitShield = false;
+                    Vector3f impactCenter = enemy.getPosition();
 
-                    // Spawn particle burst
-                    if (particleSpawner != null) {
-                        particleSpawner.spawnBurst(
-                                camera.getPosition().add(camera.getForwardDirection(true)),
-                                (int)PARTICLE_BURST_COUNT,
-                                PARTICLE_BURST_SPEED,
-                                PARTICLE_LIFESPAN,
-                                0.1f, // Slight gravity effect for particles
-                                PARTICLE_COLOR_BLUE,
-                                PARTICLE_SIZE,
-                                new Vector3f(0, 1.0f, 0) // Slight upward base velocity for burst
-                        );
+                    if (enemy.hasCustomBlockingGeometry()) {
+                        if (enemy.checkCustomBlockingGeometry(enemy.getPosition(), owner.getPosition())) {
+                            hitShield = true;
+                            impactCenter.set(enemy.getPosition()).add(new Vector3f(enemy.getForwardDirection(false)).mul(1.5f)); // Approx shield offset
+                        }
+                    }
+                    if (hitShield) {
+                        System.out.println("Slash blocked by shield!");
+                        if (particleSpawner != null) {
+                            particleSpawner.spawnBurst(
+                                    impactCenter, (int) (PARTICLE_BURST_COUNT / 2), PARTICLE_BURST_SPEED * 0.5f,
+                                    PARTICLE_LIFESPAN * 0.5f, 0.05f, new Vector3f(1.0f, 0.9f, 0.2f), // Yellow particles
+                                    PARTICLE_SIZE * 1.2f, null);
+                        }
+                        kill();
+                    } else { // Not hit shield
+                        // Apply massive damage
+                        owner.attackLivingEntity(enemy, Float.MAX_VALUE); // Deal effectively infinite damage
+                        hitEnemies.add(enemy.getId()); // Mark as hit
+
+                        // Spawn particle burst
+                        if (particleSpawner != null) {
+                            particleSpawner.spawnBurst(
+                                    // Spawn particles at the enemy's position for better visual feedback of the hit
+                                    enemy.getPosition().add(0, enemy.getLocalBoundingBox().getHeight() / 2f, 0), // Center of enemy
+                                    (int) PARTICLE_BURST_COUNT,
+                                    PARTICLE_BURST_SPEED,
+                                    PARTICLE_LIFESPAN,
+                                    0.1f, // Slight gravity effect for particles
+                                    PARTICLE_COLOR_BLUE,
+                                    PARTICLE_SIZE,
+                                    new Vector3f(0, 1.0f, 0) // Slight upward base velocity for burst
+                            );
+                        }
                     }
                 }
             }

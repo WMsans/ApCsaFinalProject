@@ -49,7 +49,7 @@ public class EnemySpawner {
 
         // Register enemy types that can be spawned
         registerEnemyType(ChromeSentinel::new);
-        // Example for future: registerEnemyType(SomeOtherEnemy::new);
+        registerEnemyType(AegisGuardian::new);
     }
 
     public void registerEnemyType(EnemyFactory factory) {

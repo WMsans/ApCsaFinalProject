@@ -78,6 +78,16 @@ public abstract class Entity {
         }
     }
 
+    public Vector3f getForwardDirection(boolean includePitch) {
+        Vector3f forward = new Vector3f();
+        double yawRad = Math.toRadians(this.yaw);
+        double pitchRad = Math.toRadians(this.pitch);
+        forward.x = (float) (Math.cos(yawRad) * Math.cos(pitchRad));
+        forward.y = includePitch ? (float) Math.sin(pitchRad) : 0;
+        forward.z = (float) (Math.sin(yawRad) * Math.cos(pitchRad));
+        return forward.normalize();
+    }
+
     protected void moveEntity(float deltaTime) {
         if (deltaTime == 0) return;
         Vector3f potentialMovement = new Vector3f(velocity).mul(deltaTime);

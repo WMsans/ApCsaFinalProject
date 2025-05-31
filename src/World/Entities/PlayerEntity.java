@@ -583,10 +583,35 @@ public class PlayerEntity extends LivingEntity {
 
                 if (entityAABB.intersectRay(rayOrigin, rayDirection, entityIntersection)) {
                     if (entityIntersection.x >= 0 && entityIntersection.x < closestDistance && entityIntersection.x <= HOOK_MAX_RANGE) {
-                        closestDistance = entityIntersection.x;
-                        targetedEntity = livingTarget;
-                        targetedBlock = null; // Entity takes precedence
-                        intersectionPoint.set(rayOrigin).add(new Vector3f(rayDirection).mul(closestDistance));
+                        Vector3f hitWorldPoint = new Vector3f(rayOrigin).add(new Vector3f(rayDirection).mul(entityIntersection.x));
+                        boolean shieldHit = false;
+                        if (livingTarget.hasCustomBlockingGeometry()) {
+                            if (livingTarget.checkCustomBlockingGeometry(hitWorldPoint, this.getPosition())) {
+                                shieldHit = true;
+                                // Optional: Spawn spark particles for hook hitting shield
+                                if (particleSpawner != null) {
+                                    particleSpawner.spawnBurst(
+                                            hitWorldPoint,
+                                            10, // count
+                                            2.0f, // burstSpeed
+                                            0.5f, // lifespan
+                                            0.1f, // gravityScale
+                                            new Vector3f(0.8f, 0.8f, 0.8f), // spark color
+                                            0.1f, // size
+                                            null // baseVelocity
+                                    );
+                                }
+                            }
+                        }
+
+                        if (!shieldHit) {
+                            closestDistance = entityIntersection.x;
+                            targetedEntity = livingTarget;
+                            targetedBlock = null; // Entity takes precedence
+                            intersectionPoint.set(hitWorldPoint); // Update the main intersection point
+                        }
+// If shieldHit is true, we don't update closestDistance or targetedEntity,
+// effectively ignoring the shielded hit for attachment.
                     }
                 }
             }

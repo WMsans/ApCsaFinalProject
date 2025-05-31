@@ -77,6 +77,20 @@ public abstract class LivingEntity extends Entity {
         return true;
     }
 
+    public boolean hasCustomBlockingGeometry() {
+        return false; // Default: no special shield
+    }
+
+    /**
+      * Checks if an interaction at a world point, originating from an attacker, is blocked by this entity's custom geometry.
+      * @param worldInteractionPoint The point of interaction in world space (e.g., where a hook hits, or center of slash area on enemy).
+      * @param attackerWorldPosition The position of the attacker in world space.
+      * @return True if the interaction is blocked, false otherwise. Meant to be overridden by entities with shields.
+      */
+    public boolean checkCustomBlockingGeometry(Vector3f worldInteractionPoint, Vector3f attackerWorldPosition) {
+        return false; // Default: not blocked
+    }
+
     /**
      * Equips an item in a specific slot.
      * This would typically be managed by an inventory component.
