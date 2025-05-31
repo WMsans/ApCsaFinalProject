@@ -25,11 +25,16 @@ public class AegisGuardian extends Enemy {
 
     private static final float MAX_HEALTH = 150.0f;
 
+    // Movement parameters similar to ChromeSentinel for flying behavior
+    private static final float MOVEMENT_SPEED = 0.8f;
+    private static final float PREFERRED_DISTANCE_MIN = 15.0f;
+    private static final float PREFERRED_DISTANCE_MAX = 25.0f;
+
     public AegisGuardian(BaseTerrainGenerator worldTerrain, Vector3f initialPosition) {
         super(worldTerrain, initialPosition, BODY_DIMENSIONS, MAX_HEALTH);
         this.yaw = (float) (Math.random() * 360.0);
-        this.skipCollisionProcessing = false;
-        this.isOnGround = false;
+        this.skipCollisionProcessing = true; // Enable flying behavior by skipping terrain collision for movement
+        this.isOnGround = false; // Explicitly state it's not on ground
 
         Vector3f shieldMin = new Vector3f(SHIELD_LOCAL_OFFSET)
                 .sub(SHIELD_DIMENSIONS.x / 2f, SHIELD_DIMENSIONS.y / 2f, SHIELD_DIMENSIONS.z / 2f);
@@ -51,6 +56,11 @@ public class AegisGuardian extends Enemy {
     }
 
     @Override
+    protected void applyGravity(float deltaTime) {
+        // AegisGuardian is a flying entity, no gravity
+    }
+
+    @Override
     protected void updateLogic(float deltaTime) {
         PlayerEntity player = null;
         float closestDistSq = Float.MAX_VALUE;
@@ -67,7 +77,29 @@ public class AegisGuardian extends Enemy {
 
         if (player != null) {
             Vector3f directionToPlayer = new Vector3f(player.getPosition()).sub(this.position);
-            this.yaw = (float) Math.toDegrees(Math.atan2(directionToPlayer.z, directionToPlayer.x)) - 90;
+            this.yaw = (float) Math.toDegrees(Math.atan2(directionToPlayer.z, directionToPlayer.x)) - 90; // Aim at player
+
+            float distanceToPlayer = directionToPlayer.length();
+            Vector3f moveDirection = new Vector3f();
+
+            if (distanceToPlayer < PREFERRED_DISTANCE_MIN) {
+                moveDirection.set(directionToPlayer).normalize().mul(-1.0f); // Move away
+            } else if (distanceToPlayer > PREFERRED_DISTANCE_MAX) {
+                moveDirection.set(directionToPlayer).normalize(); // Move closer
+            }
+
+            // Since it's flying, directly adjust position.
+            if (moveDirection.lengthSquared() > 0.01f) {
+                // Keep movement primarily horizontal like ChromeSentinel
+                moveDirection.y = 0; // Maintain current altitude relative to its movement plane
+
+                // Check again after y=0 in case only y component was non-zero
+                if (moveDirection.lengthSquared() > 0.001f) {
+                    moveDirection.normalize(); // Normalize the XZ direction
+                }
+                // Directly update position for flying movement
+                this.position.add(moveDirection.mul(MOVEMENT_SPEED * deltaTime));
+            }
         }
     }
 
@@ -82,17 +114,20 @@ public class AegisGuardian extends Enemy {
         Vector3f attackerLocalPos = new Vector3f();
         worldToLocal.transformPosition(new Vector3f(attackerWorldPosition), attackerLocalPos);
 
-        // Shield is on local +Z. If attacker is effectively "behind" the shield's front plane, it might not block.
-        // SHIELD_LOCAL_OFFSET.z - SHIELD_DIMENSIONS.z / 2.0f is approx the shield's back plane in local Z.
-        // If attacker's local Z is less than this, they are behind or to the side of the shield's main blocking face.
-        if (attackerLocalPos.z < (SHIELD_LOCAL_OFFSET.z - SHIELD_DIMENSIONS.z / 2.0f) - 0.5f) { // Added buffer for "clearly behind"
-            return false; // Shield doesn't block from this angle
+        if (attackerLocalPos.z < (SHIELD_LOCAL_OFFSET.z - SHIELD_DIMENSIONS.z / 2.0f) - 0.5f) {
+            return false;
         }
 
-        // Check if the worldInteractionPoint (e.g., hook impact, center of slash) hits the shield geometry
         Vector3f localInteractionPoint = new Vector3f();
         worldToLocal.transformPosition(new Vector3f(worldInteractionPoint), localInteractionPoint);
 
+        // For simplicity, if the attacker is not clearly behind the shield, we assume the shield might block.
+        // A more precise check would involve testing localInteractionPoint against localShieldAABB.
+        // CustomAABB shieldWorldAABB = localShieldAABB.transform(getModelMatrix()); // Less efficient to do every time
+        // return shieldWorldAABB.testPoint(worldInteractionPoint); // This would be more accurate if point is well-defined
+
+        // The current logic means if attacker is in front, any hit *might* be shield-related.
+        // Let's assume for now if the attacker is in front, it's a shield hit.
         return true;
     }
 
