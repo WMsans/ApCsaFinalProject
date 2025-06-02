@@ -34,6 +34,7 @@ public class Config {
 
     // Debug
     public boolean flyMode;
+    public boolean debugRenderAABBs; // New property
 
     // Graphics
     public float hookLineWidth;
@@ -69,7 +70,7 @@ public class Config {
 
     private void setDefaultProperties() {
         // Player
-        properties.setProperty("gamma", "1.0"); // Adjusted default gamma
+        properties.setProperty("gamma", "1.0");
         properties.setProperty("player.maxSpeed", "6.0");
         properties.setProperty("player.acceleration", "40.0");
         properties.setProperty("player.groundDeceleration", "30.0");
@@ -91,18 +92,19 @@ public class Config {
 
         // Debug
         properties.setProperty("debug.flyMode", "0");
+        properties.setProperty("debug.renderAABBs", "0"); // Default for new property
 
         // Graphics
         properties.setProperty("graphics.hookLineWidth", "2.5");
 
         // Grid Effect Default Settings
         properties.setProperty("graphics.gridSpacing", "1.0");
-        properties.setProperty("graphics.gridLineWidth", "0.1"); // As a fraction of spacing
+        properties.setProperty("graphics.gridLineWidth", "0.1");
         properties.setProperty("graphics.gridIntensity", "0.75");
-        properties.setProperty("graphics.gridColorGroundR", "1.0"); // Pinkish-Magenta
+        properties.setProperty("graphics.gridColorGroundR", "1.0");
         properties.setProperty("graphics.gridColorGroundG", "0.15");
         properties.setProperty("graphics.gridColorGroundB", "0.6");
-        properties.setProperty("graphics.gridColorMountainR", "0.15"); // Bluish-Cyan
+        properties.setProperty("graphics.gridColorMountainR", "0.15");
         properties.setProperty("graphics.gridColorMountainG", "0.7");
         properties.setProperty("graphics.gridColorMountainB", "1.0");
         properties.setProperty("graphics.gridTransitionHeight", "45.0");
@@ -131,6 +133,8 @@ public class Config {
         this.renderDistanceInChunks = Integer.parseInt(properties.getProperty("world.renderDistanceInChunks"));
 
         this.flyMode = Integer.parseInt(properties.getProperty("debug.flyMode")) >= 1;
+        this.debugRenderAABBs = Integer.parseInt(properties.getProperty("debug.renderAABBs", "0")) >= 1; // Load new property with default
+
         this.hookLineWidth = Float.parseFloat(properties.getProperty("graphics.hookLineWidth"));
 
         // Load Grid Effect Settings
@@ -176,6 +180,7 @@ public class Config {
 
     // Getter for Debug
     public boolean isDebugFlyModeEnabled() { return flyMode; }
+    public boolean isDebugRenderAABBsEnabled() { return debugRenderAABBs; } // Getter for new property
 
     // Getter for Graphics
     public float getHookLineWidth() { return hookLineWidth; }

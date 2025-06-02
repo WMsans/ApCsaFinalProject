@@ -161,21 +161,19 @@ public class Main implements Runnable {
             float currentTime = (float) glfwGetTime();
             deltaTime = currentTime - lastTime;
             lastTime = currentTime;
-            if (deltaTime > 0.1f) deltaTime = 0.1f; // Clamp delta time
-            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f; // Handle anomalies
+            if (deltaTime > 0.1f) deltaTime = 0.1f;
+            if (deltaTime <= 0) deltaTime = 1.0f / 60.0f;
 
-            input.pollEvents(); // Process all pending input events
+            input.pollEvents();
             if (input.isKeyPressed(GLFW_KEY_ESCAPE)) glfwSetWindowShouldClose(window.getWindowHandle(), true);
 
-            playerEntity.update(deltaTime, currentTime); // Update player first
+            playerEntity.update(deltaTime, currentTime);
 
-            // Update enemy spawner and other game logic
             if (enemySpawner != null) {
                 enemySpawner.update(deltaTime);
             }
-            terrain.updateEntities(deltaTime, currentTime); // Update all other entities
+            terrain.updateEntities(deltaTime, currentTime);
 
-            // Chunk management
             terrain.processCompletedChunks();
             ChunkId currentPlayerChunkId = Chunk.getChunkIdAtWorldPosition(playerEntity.getPosition());
             terrain.unloadDistantChunks(currentPlayerChunkId, config.getRenderDistanceInChunks(), playerEntity);
@@ -184,28 +182,27 @@ public class Main implements Runnable {
             for (Entity entity : currentEntities) {
                 if (!entity.isValid()) continue;
                 List<ModelComponent> components = entity.getModelComponents();
-                if (components.isEmpty() && entity.isValid()) { // If populate wasn't called or no components
+                if (components.isEmpty() && entity.isValid()) {
                     entity.initializeModels(renderer.getEntityRenderer());
-                    components = entity.getModelComponents(); // Re-fetch
+                    components = entity.getModelComponents();
                 }
                 for (ModelComponent mc : components) {
-                    if (mc.model() != null && mc.model().getVaoId() == 0) { // If model exists but VAO not built
+                    if (mc.model() != null && mc.model().getVaoId() == 0) {
                         renderer.getEntityRenderer().buildMesh(mc.model());
                     }
                 }
             }
 
-            // Rendering
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear buffers
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            renderer.renderSkybox(); // Render Skybox first (or after glClear)
+            renderer.renderSkybox();
 
             renderer.renderTerrain(terrain, playerEntity.getPosition());
-            renderer.renderEntities(currentEntities, playerEntity.getCamera(), playerEntity); // Pass player for line
+            renderer.renderEntities(currentEntities, playerEntity.getCamera(), playerEntity);
             renderer.renderCrosshair();
 
             window.swapBuffers();
-            glfwPollEvents(); // Poll for window events (like close button)
+            glfwPollEvents();
         }
     }
 
