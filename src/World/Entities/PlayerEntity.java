@@ -396,8 +396,8 @@ public class PlayerEntity extends LivingEntity {
     private void handleFlyingMovement(float deltaTime) {
         velocity.zero();
         Vector3f flyDirection = new Vector3f(0,0,0);
-        Vector3f camForward = camera.getForwardDirection(true); // Use true for flying
-        Vector3f camRight = camera.getRightDirection(true);   // Use true for flying
+        Vector3f camForward = camera.getForwardDirection(false);
+        Vector3f camRight = camera.getRightDirection(false);
         Vector3f worldUp = new Vector3f(0, 1, 0);
 
         if (input.isKeyDown(GLFW_KEY_W)) flyDirection.add(camForward);
